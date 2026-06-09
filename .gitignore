@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+backend/venv/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Local vector database / generated app data
+backend/chroma_db/
+backend/.cache/
+*.sqlite
+*.sqlite3
+
+# Logs and runtime files
+*.log
+backend/backend_stdout.log
+backend/backend_stderr.log
+logs/
+*.pid
+*.tmp
+tmp/
+temp/
+
+# Node / frontend build output
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+
+# Local model/cache directories
+.cache/
+models/
+*.safetensors
+*.bin
+*.onnx
+
+# Scratch/debug snippets
+backend/*_snippet*.txt
+backend/*_deleted.txt

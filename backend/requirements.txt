@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+beautifulsoup4
+chromadb
+sentence-transformers
+openai
+requests
+python-dotenv
+pydantic
+duckduckgo-search
+pypdf

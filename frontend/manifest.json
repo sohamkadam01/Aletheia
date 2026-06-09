@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Website Context Chatbot",
+  "version": "1.0",
+  "description": "Chat with any website using AI and RAG (BGE-M3 + OpenRouter/Ollama).",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "css": ["widget.css"]
+    }
+  ],
+  "action": {
+    "default_title": "Activate Chat Bot"
+  }
+}
