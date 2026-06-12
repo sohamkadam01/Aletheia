@@ -55,8 +55,6 @@ def retrieve_website_context(
     retrieval = empty_retrieval()
     primary_live_context = ""
 
-    # In compare mode with a fetched webpage, skip live page context extraction —
-    # the full fetched text is passed separately and applied by apply_fetched_webpage_context.
     if document_mode in ("website", "compare") and latest_page_text:
         primary_live_context = live_page_context(
             live_retrieval_question or retrieval_question,
@@ -68,9 +66,8 @@ def retrieve_website_context(
             retrieval = _live_page_retrieval(url, primary_live_context)
 
     should_fetch_indexed = (
-        document_mode == "compare"
-        or not primary_live_context
-        or (document_mode == "website" and is_link_question(question))
+        not primary_live_context
+        or (document_mode in ("website", "compare") and is_link_question(question))
     )
     if document_mode in ("website", "compare") and should_fetch_indexed:
         indexed_retrieval = retrieve_context(
@@ -102,12 +99,10 @@ def retrieve_document_context(
     if document_mode not in ("document", "compare"):
         return document_retrieval
 
-    # In compare mode fetch more chunks so the full document is covered.
-    effective_n = 20 if full_document_retrieval else n_results
     document_retrieval = retrieve_context(
         document_url,
         retrieval_question,
-        n_results=effective_n,
+        n_results=n_results,
         context_max_chars=context_max_chars,
     )
     for index, source in enumerate(document_retrieval.get("sources", []), start=1):
@@ -124,36 +119,8 @@ def retrieve_document_context(
 
 def label_website_sources_for_mode(retrieval: dict, document_mode: str) -> dict:
     for index, source in enumerate(retrieval.get("sources", []), start=1):
-        source["id"] = f"W{index}" if document_mode == "compare" else source.get("id", f"S{index}")
-        if document_mode == "compare":
-            retrieval["context"] = retrieval.get("context", "").replace(
-                f"Source S{index}:",
-                f"Website W{index}:",
-            )
+        source["id"] = source.get("id", f"S{index}")
         source["source_type"] = "website"
-    return retrieval
-
-
-def apply_fetched_webpage_context(
-    retrieval: dict,
-    document_mode: str,
-    fetched_text: str,
-    fetched_url: str,
-    context_max_chars: int = 3200,
-) -> dict:
-    if document_mode != "compare" or not fetched_text:
-        return retrieval
-
-    retrieval["context"] = (
-        f"Fetched webpage (Document B) from: {fetched_url}\n\n"
-        f"{fetched_text[:context_max_chars]}"
-    )
-    retrieval["sources"] = [{"id": "W1", "url": fetched_url, "title": fetched_url, "source_type": "website"}]
-    retrieval["confidence"] = "high"
-    retrieval["context_chars"] = len(retrieval["context"])
-    retrieval["selected_chunks"] = 1
-    retrieval["retrieval_mode"] = "fetched_webpage"
-    retrieval["reranked"] = False
     return retrieval
 
 
@@ -165,8 +132,6 @@ def retrieve_page_and_document_contexts(
     question: str,
     retrieval_question: str,
     latest_page_text: str,
-    fetched_webpage_text: str,
-    fetched_webpage_url: str,
     n_results: int,
     full_document_retrieval: bool = False,
     empty_retrieval,
@@ -202,14 +167,7 @@ def retrieve_page_and_document_contexts(
         context_max_chars=document_context_max_chars,
     )
 
-    if document_mode in ("document", "compare"):
+    if document_mode == "document":
         retrieval = label_website_sources_for_mode(retrieval, document_mode)
-        retrieval = apply_fetched_webpage_context(
-            retrieval,
-            document_mode,
-            (fetched_webpage_text or "").strip(),
-            (fetched_webpage_url or "").strip(),
-            context_max_chars=context_max_chars,
-        )
 
     return retrieval, document_retrieval

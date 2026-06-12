@@ -17,10 +17,11 @@ from collections import defaultdict
 import uvicorn
 
 # Relative imports from the same directory
-from handlers import chat_context, chat_response, chat_retrieval, chat_utils, chart_tool, compare_chat, document_chat, website_chat
+from handlers import chat_context, chat_response, chat_retrieval, chat_utils, chart_tool, compare_tool, document_chat, website_chat
 from crawler import crawl_website, site_key
 from scraper import clean_html_content, clean_text, decode_bytes
 from rag import (
+    NORMAL_CONTEXT_MAX_CHARS,
     content_hash,
     delete_old_collections,
     get_collection_stats,
@@ -164,6 +165,19 @@ class FlowchartRequest(BaseModel):
     fetched_webpage_url: Optional[str] = None
     history: Optional[list[dict]] = None
     conversation_memory: Optional[dict] = None
+
+class CompareRequest(BaseModel):
+    document_a_text: str
+    document_a_label: Optional[str] = "Document A"
+    document_b_text: str
+    document_b_label: Optional[str] = "Document B"
+    compare_goal: Optional[str] = "Compare the two sources"
+    ollama_model: Optional[str] = None
+    openrouter_model: Optional[str] = None
+    force_provider: Optional[str] = None
+
+    class Config:
+        extra = "forbid"
 
 def normalize_page_content(content: str) -> str:
     if "<" in content and ">" in content:
@@ -346,9 +360,19 @@ def schedule_page_index(url: str, text: str, text_hash: str = "") -> None:
 
     threading.Thread(target=run_index, daemon=True).start()
 
-def safe_retrieve_context_with_sources(url: str, question: str, n_results: int = 5) -> dict:
+def safe_retrieve_context_with_sources(
+    url: str,
+    question: str,
+    n_results: int = 5,
+    context_max_chars: int = NORMAL_CONTEXT_MAX_CHARS,
+) -> dict:
     try:
-        return retrieve_context_with_sources(url, question, n_results=n_results)
+        return retrieve_context_with_sources(
+            url,
+            question,
+            n_results=n_results,
+            context_max_chars=context_max_chars,
+        )
     except Exception as exc:
         if is_local_vector_store_error(exc):
             print(f"Local vector cache unavailable while retrieving context: {exc}")
@@ -458,6 +482,101 @@ async def starter_questions(request: StarterRequest):
     except Exception as e:
         print(f"Error in /starter-questions: {str(e)}")
         return {"suggestions": ["Summarize this page", "What are the key takeaways?", "Explain simply"]}
+
+@app.post("/compare")
+def compare_sources(request: CompareRequest):
+    try:
+        _autodetect_provider(request)
+        return compare_tool.run_compare_tool(
+            document_a=request.document_a_text,
+            document_b=request.document_b_text,
+            compare_goal=request.compare_goal or "Compare the two sources",
+            labels={
+                "a": request.document_a_label or "Document A",
+                "b": request.document_b_label or "Document B",
+            },
+            model_options={
+                "ollama_model": request.ollama_model,
+                "openrouter_model": request.openrouter_model,
+                "force_provider": request.force_provider or "",
+            },
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in /compare: {str(e)}")
+        raise HTTPException(status_code=500, detail="Compare Tool failed to compare the two sources.")
+
+
+@app.post("/compare/stream")
+def stream_compare_sources(request: CompareRequest):
+    def events():
+        started_at = time.perf_counter()
+        try:
+            _autodetect_provider(request)
+            payload = compare_tool.build_compare_tool_payload(
+                document_a=request.document_a_text,
+                document_b=request.document_b_text,
+                compare_goal=request.compare_goal or "Compare the two sources",
+                labels={
+                    "a": request.document_a_label or "Document A",
+                    "b": request.document_b_label or "Document B",
+                },
+            )
+            result = payload["result"]
+            yield stream_json_event({
+                "type": "compare_result",
+                "result": result,
+                "sources": result.get("sources", []),
+                "confidence": result.get("confidence", "compare tool"),
+            })
+
+            full_answer = ""
+            provider = ""
+            model = ""
+            fallback_reason = ""
+            for event in stream_answer(
+                payload["context"],
+                payload["question"],
+                ollama_model=request.ollama_model,
+                openrouter_model=request.openrouter_model,
+                confidence="high",
+                force_provider=request.force_provider or "",
+            ):
+                if event.get("type") == "delta":
+                    full_answer += event.get("text", "")
+                elif event.get("type") == "meta":
+                    provider = event.get("provider", provider)
+                    model = event.get("model", model)
+                    fallback_reason = event.get("fallback_reason", fallback_reason)
+                elif event.get("type") == "done":
+                    provider = event.get("provider", provider)
+                    model = event.get("model", model)
+                    continue
+                yield stream_json_event(event)
+
+            result["answer"] = full_answer.strip()
+            result["provider"] = provider
+            result["model"] = model
+            result["confidence"] = "compare tool"
+            result["fallback_reason"] = fallback_reason
+            result["answer_time_ms"] = round((time.perf_counter() - started_at) * 1000)
+            yield stream_json_event({
+                "type": "compare_done",
+                "result": result,
+                "provider": provider,
+                "model": model,
+                "fallback_reason": fallback_reason,
+            })
+        except ValueError as e:
+            yield stream_json_event({"type": "error", "message": str(e)})
+        except Exception as e:
+            print(f"Error in /compare/stream: {str(e)}")
+            yield stream_json_event({"type": "error", "message": "Compare Tool streaming failed."})
+
+    return StreamingResponse(events(), media_type="application/x-ndjson")
 
 
 @app.post("/summarize-page")
@@ -594,11 +713,7 @@ def chat_with_website(request: ChatRequest):
         document_mode = chat_utils.normalize_document_mode(request.document_mode)
         document_url = document_collection_url(request.document_id) if request.document_id else ""
 
-        if document_mode == "compare" and not (request.fetched_webpage_text or "").strip() and not (request.content or "").strip():
-            return compare_chat.missing_second_source_response(
-                answer_time_ms=round((time.perf_counter() - started_at) * 1000), document_mode=document_mode)
-
-        if document_mode in ("document", "compare") and not document_url:
+        if document_mode == "document" and not document_url:
             return document_chat.missing_document_response()
 
         latest_page_text = ""
@@ -643,27 +758,19 @@ def chat_with_website(request: ChatRequest):
         scoped_history = chat_utils.mode_scoped_history(request.history, document_mode)
         scoped_memory = chat_utils.mode_scoped_conversation_memory(request.conversation_memory, document_mode)
 
-        if document_mode == "compare":
-            augmented_history = []
-            memory_summary = ""
-        else:
-            augmented_history = chat_utils.memory_augmented_history(scoped_history, scoped_memory)
-            memory_summary = chat_utils.conversation_memory_summary(scoped_memory)
+        augmented_history = chat_utils.memory_augmented_history(scoped_history, scoped_memory)
+        memory_summary = chat_utils.conversation_memory_summary(scoped_memory)
 
         retrieval_question = rewrite_follow_up_question(request.question, augmented_history)
         retrieval_started_at = time.perf_counter()
         raise_if_cancelled(cancel_event)
         n_results = 3 if request.concise_answer else 5
-        effective_retrieval_question = compare_chat.build_compare_retrieval_query(retrieval_question) if document_mode == "compare" else retrieval_question
-        effective_n_results = max(n_results, 8) if document_mode == "compare" else n_results
 
         retrieval, document_retrieval = chat_retrieval.retrieve_page_and_document_contexts(
             document_mode=document_mode, url=request.url, document_url=document_url,
-            question=request.question, retrieval_question=effective_retrieval_question,
+            question=request.question, retrieval_question=retrieval_question,
             live_retrieval_question=retrieval_question, latest_page_text=latest_page_text,
-            fetched_webpage_text=request.fetched_webpage_text or "",
-            fetched_webpage_url=request.fetched_webpage_url or "",
-            n_results=effective_n_results, full_document_retrieval=(document_mode == "compare"),
+            n_results=n_results,
             empty_retrieval=chat_utils.empty_retrieval, live_page_context=chat_utils.live_page_context,
             retrieve_context=safe_retrieve_context_with_sources, is_link_question=is_link_question,
         )
@@ -687,17 +794,6 @@ def chat_with_website(request: ChatRequest):
                 answer_time_ms=round((time.perf_counter() - started_at) * 1000),
                 retrieval_time_ms=retrieval_time_ms, document_retrieval=document_retrieval, document_mode=document_mode)
 
-        if document_mode == "compare" and (not website_context or not document_context):
-            return compare_chat.incomplete_compare_pair_response(
-                answer_time_ms=round((time.perf_counter() - started_at) * 1000),
-                retrieval_time_ms=retrieval_time_ms, has_document=bool(document_context),
-                has_webpage=bool(website_context), document_mode=document_mode)
-
-        if document_mode == "compare" and not website_context and not document_context:
-            return compare_chat.empty_compare_response(
-                answer_time_ms=round((time.perf_counter() - started_at) * 1000),
-                retrieval_time_ms=retrieval_time_ms, requires_index=not bool(request.content_hash), document_mode=document_mode)
-
         if document_mode == "website" and not flowchart_question:
             if website_chat.should_escalate_for_weak_context(context_validation=context_validation, retrieval_confidence=retrieval_confidence) \
                or website_chat.should_search_external(context=context, retrieval_question=retrieval_question,
@@ -717,8 +813,7 @@ def chat_with_website(request: ChatRequest):
                 answer_time_ms=round((time.perf_counter() - started_at) * 1000),
                 retrieval_time_ms=retrieval_time_ms, requires_index=not bool(request.content_hash))
 
-        if document_mode != "compare":
-            context = chat_context.with_memory_context(memory_summary, context)
+        context = chat_context.with_memory_context(memory_summary, context)
 
         if not context:
             context = "No relevant information from the current page was retrieved."
@@ -800,7 +895,7 @@ def stream_chat_with_website(request: ChatRequest):
 
             document_mode = chat_utils.normalize_document_mode(request.document_mode)
             if document_mode != "website":
-                yield stream_json_event({"type": "error", "message": "Streaming is currently enabled for website chat. Document and compare modes use the regular chat path."})
+                yield stream_json_event({"type": "error", "message": "Streaming is enabled for website chat only. Document mode uses regular chat; compare mode uses the dedicated /compare endpoint."})
                 return
 
             latest_page_text = ""
@@ -1029,6 +1124,11 @@ def create_chart(request: ChartRequest):
         document_url = document_collection_url(request.document_id) if request.document_id else ""
         _autodetect_provider(request)
 
+        if document_mode == "compare":
+            return {"ok": False, "error": "Compare mode uses the dedicated Compare Tool. Run /compare instead of the chart endpoint.",
+                "answer": "", "provider": "", "model": "", "sources": [], "mode": document_mode,
+                "answer_time_ms": round((time.perf_counter() - started_at) * 1000)}
+
         latest_page_text = ""
         if document_mode != "document" and request.content:
             latest_page_text = normalize_page_content(request.content)
@@ -1039,14 +1139,6 @@ def create_chart(request: ChartRequest):
 
         if document_mode == "document" and document_url:
             retrieval = safe_retrieve_context_with_sources(document_url, retrieval_question, n_results=8)
-        elif document_mode == "compare":
-            page_ret = safe_retrieve_context_with_sources(request.url, retrieval_question, n_results=5)
-            doc_ret = safe_retrieve_context_with_sources(document_url, retrieval_question, n_results=5) if document_url else chat_utils.empty_retrieval("No document.")
-            retrieval = {
-                "context": f"[Webpage: {request.fetched_webpage_url or request.url}]\n{page_ret.get('context','')}\n\n[Document]\n{doc_ret.get('context','')}",
-                "sources": [*page_ret.get("sources", []), *doc_ret.get("sources", [])],
-                "confidence": page_ret.get("confidence", "medium"),
-            }
         else:
             if latest_page_text:
                 live_context = chat_utils.live_page_context(
@@ -1123,6 +1215,11 @@ def create_flowchart(request: FlowchartRequest):
         document_url = document_collection_url(request.document_id) if request.document_id else ""
         _autodetect_provider(request)
 
+        if document_mode == "compare":
+            return {"ok": False, "error": "Compare mode uses the dedicated Compare Tool. Run /compare instead of the flowchart endpoint.",
+                "answer": "", "provider": "", "model": "", "sources": [], "mode": document_mode,
+                "answer_time_ms": round((time.perf_counter() - started_at) * 1000)}
+
         latest_page_text = ""
         if document_mode != "document" and request.content:
             latest_page_text = normalize_page_content(request.content)
@@ -1131,14 +1228,6 @@ def create_flowchart(request: FlowchartRequest):
 
         if document_mode == "document" and document_url:
             retrieval = safe_retrieve_context_with_sources(document_url, request.question, n_results=8)
-        elif document_mode == "compare":
-            page_ret = safe_retrieve_context_with_sources(request.url, request.question, n_results=5)
-            doc_ret = safe_retrieve_context_with_sources(document_url, request.question, n_results=5) if document_url else chat_utils.empty_retrieval("No document.")
-            retrieval = {
-                "context": f"[Webpage]\n{page_ret.get('context','')}\n\n[Document]\n{doc_ret.get('context','')}",
-                "sources": [*page_ret.get("sources", []), *doc_ret.get("sources", [])],
-                "confidence": page_ret.get("confidence", "medium"),
-            }
         else:
             if latest_page_text:
                 live_context = chat_utils.live_page_context(

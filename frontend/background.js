@@ -1,6 +1,7 @@
 const activeControllers = new Map();
 const LOCAL_BACKEND = 'http://localhost:8000';
 const LOOPBACK_BACKEND = 'http://127.0.0.1:8000';
+const COMPARE_STREAM_TIMEOUT_MS = 900000;
 
 function fallbackBackendEndpoint(endpoint) {
     if (endpoint.startsWith(LOCAL_BACKEND)) {
@@ -31,6 +32,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         fetchIndex: `${LOCAL_BACKEND}/index`,
         fetchChat: `${LOCAL_BACKEND}/chat`,
         fetchChatStream: `${LOCAL_BACKEND}/chat/stream`,
+        fetchCompare: `${LOCAL_BACKEND}/compare`,
+        fetchCompareStream: `${LOCAL_BACKEND}/compare/stream`,
         fetchCancel: `${LOCAL_BACKEND}/cancel`,
         fetchFeedback: `${LOCAL_BACKEND}/feedback`,
         fetchPageSummary: `${LOCAL_BACKEND}/summarize-page`,
@@ -53,21 +56,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return false;
     }
 
-    if (request.action === 'fetchChatStream') {
-        const endpoint = endpointByAction.fetchChatStream;
+    if (request.action === 'fetchChatStream' || request.action === 'fetchCompareStream') {
+        const isCompareStream = request.action === 'fetchCompareStream';
+        const endpoint = isCompareStream ? endpointByAction.fetchCompareStream : endpointByAction.fetchChatStream;
         const controller = new AbortController();
         const requestId = request.requestId || request.payload?.request_id || '';
         if (requestId) {
             activeControllers.set(requestId, controller);
         }
 
-        const timeoutId = setTimeout(() => controller.abort(), 300000);
+        let timeoutFired = false;
+        const timeoutId = setTimeout(() => {
+            timeoutFired = true;
+            controller.abort();
+        }, isCompareStream ? COMPARE_STREAM_TIMEOUT_MS : 300000);
         let sawStreamTerminalEvent = false;
         let sawStreamDelta = false;
         const sendStreamEvent = (event) => {
             if (sender.tab?.id) {
                 chrome.tabs.sendMessage(sender.tab.id, {
-                    action: 'chatStreamEvent',
+                    action: isCompareStream ? 'compareStreamEvent' : 'chatStreamEvent',
                     requestId,
                     event
                 });
@@ -77,7 +85,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 if (event.type === 'delta' && event.text) {
                     sawStreamDelta = true;
                 }
-                if (['done', 'error', 'external_required'].includes(event.type)) {
+                if (['done', 'compare_done', 'error', 'external_required'].includes(event.type)) {
                     sawStreamTerminalEvent = true;
                 }
             }
@@ -135,14 +143,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             }
 
             if (!sawStreamTerminalEvent && !controller.signal.aborted) {
-                sendStreamEvent(sawStreamDelta
-                    ? { type: 'done', provider: '', model: '', suggestions: [] }
-                    : { type: 'error', message: 'Streaming response closed before completion.' }
+                sendStreamEvent(isCompareStream
+                    ? { type: 'error', message: 'Compare is taking longer than expected. Local Ollama models can be slow on large sources. The structured comparison may still be available.' }
+                    : (sawStreamDelta
+                        ? { type: 'done', provider: '', model: '', suggestions: [] }
+                        : { type: 'error', message: 'Streaming response closed before completion.' })
                 );
             }
         })
         .catch((error) => {
-            const message = error.name === 'AbortError' ? 'Request cancelled.' : error.toString();
+            const message = error.name === 'AbortError'
+                ? (timeoutFired && isCompareStream
+                    ? 'Compare is taking longer than expected. Local Ollama models can be slow on large sources. The structured comparison may still be available.'
+                    : 'Request cancelled.')
+                : error.toString();
             sendStreamEvent({ type: 'error', message });
         })
         .finally(() => {
@@ -166,6 +180,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             fetchCacheStatus: 60000,
             fetchIndex: 180000,
             fetchChat: 300000,
+            fetchCompare: COMPARE_STREAM_TIMEOUT_MS,
             fetchPageSummary: 180000,
             fetchFlowchart: 420000,
             fetchChart: 300000,
@@ -201,6 +216,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 fetchCacheStatus: 'Backend cache check timed out.',
                 fetchIndex: 'Page indexing timed out. Large pages or first-time embedding model load can take longer.',
                 fetchChat: 'Backend chat request timed out. The local Ollama fallback may still be generating.',
+                fetchCompare: 'Compare Tool timed out. Try shorter sources or another model.',
                 fetchPageSummary: 'Page summarizer timed out. Try a shorter summary or another model.',
                 fetchFlowchart: 'Flowchart tool timed out. Try an overview flowchart or another model.',
                 fetchChart: 'Chart tool timed out. Try a simpler chart or another model.',

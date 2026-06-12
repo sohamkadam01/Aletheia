@@ -1,6 +1,6 @@
 # Website Context Chatbot
 
-A Chrome extension that lets users chat with any website using AI and retrieval-augmented generation (RAG). The extension reads the current webpage, sends the page context to a local FastAPI backend, retrieves the most relevant content, and generates grounded answers using OpenRouter or a local Ollama model.
+A Chrome extension that lets users chat with any website using AI and retrieval-augmented generation (RAG). The extension reads the current webpage, sends the page context to a local FastAPI backend, retrieves relevant content, and generates grounded answers using OpenRouter or a local Ollama model.
 
 ## Features
 
@@ -8,7 +8,7 @@ A Chrome extension that lets users chat with any website using AI and retrieval-
 - Ask page-specific questions using retrieved website context
 - Summarize and explain long or complex webpages
 - Generate follow-up questions and helpful suggestions
-- Compare website content with uploaded or extracted document context
+- Compare two explicit sources with a dedicated Compare Tool
 - Create structured visual outputs such as charts and flow diagrams
 - Use OpenRouter models with Ollama as a local fallback
 - Store and search page context with a local vector database
@@ -40,26 +40,53 @@ A Chrome extension that lets users chat with any website using AI and retrieval-
 
 ```text
 Website Chatbot/
-├── backend/
-│   ├── handlers/          # Chat, retrieval, compare, document, and chart handlers
-│   ├── prompts/           # Prompt builders for chat and auxiliary tasks
-│   ├── chroma_db/         # Local vector database data, ignored by git
-│   ├── crawler.py
-│   ├── llm.py
-│   ├── llm_providers.py
-│   ├── main.py
-│   ├── rag.py
-│   ├── scraper.py
-│   ├── search.py
-│   └── requirements.txt
-├── frontend/
-│   ├── background.js      # Chrome extension service worker
-│   ├── content.js         # Injected chatbot widget logic
-│   ├── manifest.json      # Extension manifest
-│   └── widget.css         # Widget styles
-├── restart_backend.ps1
-└── test_comparison_pipeline.py
+|-- backend/
+|   |-- handlers/           # Chat, retrieval, compare, document, and chart handlers
+|   |   |-- compare_tool.py  # Dedicated Compare Tool pipeline
+|   |   |-- compare_chat.py  # Compare extraction/classification helpers
+|   |   `-- compare_cache.py # Cached structured extraction
+|   |-- prompts/            # Prompt builders for chat and auxiliary tasks
+|   |-- chroma_db/          # Local vector database data, ignored by git
+|   |-- crawler.py
+|   |-- llm.py
+|   |-- llm_providers.py
+|   |-- main.py             # FastAPI routes, including POST /compare
+|   |-- rag.py
+|   |-- scraper.py
+|   |-- search.py
+|   `-- requirements.txt
+|-- frontend/
+|   |-- background.js       # Chrome extension service worker
+|   |-- content.js          # Widget logic, including Compare Tool UI
+|   |-- manifest.json       # Extension manifest
+|   `-- widget.css          # Widget and Compare Tool styles
+|-- restart_backend.ps1
+`-- test_comparison_pipeline.py
 ```
+
+## Compare Tool Architecture
+
+Compare is implemented as a separate tool, not as chat mode with mixed context.
+
+```text
+frontend/content.js
+  Compare Tool UI
+  runCompareTool()
+  renderCompareResult()
+        |
+        v
+backend/main.py
+  POST /compare
+        |
+        v
+backend/handlers/compare_tool.py
+  exact Source A + exact Source B
+  pass 1: extract structured facts independently
+  pass 2: compare extracted facts deterministically
+  final: ask the LLM only to explain the comparison result
+```
+
+The Compare Tool reuses `compare_chat.py` for document classification and structured extraction, and `compare_cache.py` for cached extraction results. It does not use chat history, conversation memory, external search, chat streaming, or mixed website/document retrieval.
 
 ## Setup
 
@@ -147,12 +174,12 @@ http://localhost:11434
 ## How It Works
 
 1. The Chrome extension injects a chatbot widget into the active webpage.
-2. The frontend collects the current page URL and page context.
-3. The FastAPI backend scrapes, chunks, and indexes the content.
-4. ChromaDB stores embeddings for semantic retrieval.
-5. The user question is matched against the most relevant page chunks.
-6. The selected LLM generates an answer using the retrieved context.
-7. The response is displayed inside the website chatbot UI.
+2. Website and document chat use RAG-backed retrieval through the FastAPI backend.
+3. Compare Tool sends exact Source A and Source B text to `POST /compare`.
+4. The Compare Tool extracts structured facts independently from both sources.
+5. It builds deterministic rows for matches, missing items, conflicts, extras, and score.
+6. The LLM explains the already-built comparison instead of comparing mixed raw context.
+7. The response is displayed inside the widget.
 
 ## Notes
 
@@ -163,4 +190,4 @@ http://localhost:11434
 
 ## Hackathon Summary
 
-Website Context Chatbot is a browser-based AI assistant that makes any website conversational. Instead of copying content into a separate chatbot, users can ask questions directly on the page and receive answers grounded in the website's actual content.
+Website Context Chatbot is a browser-based AI assistant that makes any website conversational. Instead of copying content into a separate chatbot, users can ask questions directly on the page and receive answers grounded in the website's actual content. Compare Tool adds a separate source-to-source comparison workflow for accurate side-by-side analysis.

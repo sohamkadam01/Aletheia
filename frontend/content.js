@@ -143,6 +143,54 @@
                 </div>
                 <span class="webpage-hint">Paste any public URL — the server fetches &amp; extracts its text, then compares it against your uploaded document.</span>
             </div>
+            <div id="web-chatbot-compare-tool" class="hidden">
+                <div class="compare-compact-bar">
+                    <div class="compare-compact-copy">
+                        <div class="compare-tool-title">Compare mode active</div>
+                        <div id="compare-compact-summary" class="compare-tool-subtitle">Source A and Source B ready when selected</div>
+                    </div>
+                    <button id="web-chatbot-compare-toggle" type="button">Change sources</button>
+                </div>
+                <div id="compare-advanced-panel" class="compare-advanced-panel hidden">
+                    <div class="compare-tool-head">
+                        <div>
+                            <div class="compare-tool-title">Compare Tool</div>
+                            <div class="compare-tool-subtitle">Separate sources, deterministic comparison</div>
+                        </div>
+                        <button id="web-chatbot-compare-run" type="button">Run Compare</button>
+                    </div>
+                    <div class="compare-source-grid">
+                        <section class="compare-source-box">
+                            <div class="compare-source-title">Source A</div>
+                            <div class="compare-source-actions">
+                                <button type="button" id="compare-a-upload">Upload document</button>
+                                <button type="button" id="compare-a-current">Use current page</button>
+                            </div>
+                            <div id="compare-a-preview" class="compare-preview">No source selected</div>
+                        </section>
+                        <section class="compare-source-box">
+                            <div class="compare-source-title">Source B</div>
+                            <div class="compare-source-actions">
+                                <button type="button" id="compare-b-fetch">Fetch URL</button>
+                                <button type="button" id="compare-b-upload">Upload document</button>
+                                <button type="button" id="compare-b-current">Use current page</button>
+                            </div>
+                            <input id="web-chatbot-compare-b-file" class="hidden" type="file" accept=".pdf,.docx,.txt,.md,.csv,.json,.html,.htm,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/*">
+                            <div id="compare-b-preview" class="compare-preview">No source selected</div>
+                        </section>
+                    </div>
+                    <label class="compare-goal-row hidden">
+                        <span>Compare Goal</span>
+                        <select id="web-chatbot-compare-goal">
+                            <option value="Role fit">Role fit</option>
+                            <option value="Feature comparison">Feature comparison</option>
+                            <option value="Policy comparison">Policy comparison</option>
+                            <option value="Pricing comparison">Pricing comparison</option>
+                            <option value="General comparison">General comparison</option>
+                        </select>
+                    </label>
+                </div>
+            </div>
             <div id="web-chatbot-settings-panel" class="hidden">
                 <label>Pages to crawl <input id="web-chatbot-crawl-limit" type="number" min="1" max="25" value="10"></label>
                 <label><span>Auto-index on open</span> <input id="web-chatbot-auto-index" type="checkbox" checked></label>
@@ -217,6 +265,20 @@
     const webpagePanel = document.getElementById('web-chatbot-webpage-panel');
     const webpageUrlInput = document.getElementById('web-chatbot-webpage-url');
     const webpageFetchBtn = document.getElementById('web-chatbot-webpage-fetch');
+    const compareToolPanel = document.getElementById('web-chatbot-compare-tool');
+    const compareToggleBtn = document.getElementById('web-chatbot-compare-toggle');
+    const compareAdvancedPanel = document.getElementById('compare-advanced-panel');
+    const compareCompactSummary = document.getElementById('compare-compact-summary');
+    const compareRunBtn = document.getElementById('web-chatbot-compare-run');
+    const compareGoalSelect = document.getElementById('web-chatbot-compare-goal');
+    const compareAUploadBtn = document.getElementById('compare-a-upload');
+    const compareACurrentBtn = document.getElementById('compare-a-current');
+    const compareBFetchBtn = document.getElementById('compare-b-fetch');
+    const compareBUploadBtn = document.getElementById('compare-b-upload');
+    const compareBCurrentBtn = document.getElementById('compare-b-current');
+    const compareBFileInput = document.getElementById('web-chatbot-compare-b-file');
+    const compareAPreview = document.getElementById('compare-a-preview');
+    const compareBPreview = document.getElementById('compare-b-preview');
     const settingsPanel = document.getElementById('web-chatbot-settings-panel');
     const crawlLimitInput = document.getElementById('web-chatbot-crawl-limit');
     const modelSelect = document.getElementById('web-chatbot-model');
@@ -239,6 +301,11 @@
     let activeScope = 'page';
     let activeDocumentMode = 'website';
     let uploadedDocument = null;
+    let compareSourceA = 'document';
+    let compareSourceB = 'fetched';
+    let compareSourceBDocument = null;
+    let compareAdvancedOpen = false;
+    let pendingCompareRequest = null;
     let fetchedWebpageText = '';   // text extracted from a user-supplied URL for compare mode
     let fetchedWebpageUrl = '';
     let latestContent = '';
@@ -1012,13 +1079,16 @@
     const renderTable = (rows, options = {}) => {
         if (rows.length < 2) return '';
         const header = splitTableRow(rows[0]);
+        const tableClass = header.some((cell) => ['Impact', 'Source A', 'Source B', 'Reason'].includes(cell))
+            ? 'message-table-wrap compare-result-table-wrap'
+            : 'message-table-wrap';
         const bodyRows = rows.slice(isTableSeparator(rows[1]) ? 2 : 1).map(splitTableRow);
         const headerHtml = header.map((cell) => `<th>${formatInlineBotText(cell, options)}</th>`).join('');
         const bodyHtml = bodyRows
             .filter((row) => row.length)
             .map((row) => `<tr>${header.map((_, index) => `<td>${formatInlineBotText(row[index] || '', options)}</td>`).join('')}</tr>`)
             .join('');
-        return `<div class="message-table-wrap"><table><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table></div>`;
+        return `<div class="${tableClass}"><table><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table></div>`;
     };
 
     const parseChartJson = (text) => {
@@ -1662,7 +1732,11 @@
             });
         }
 
-        webpagePanel.classList.toggle('hidden', activeDocumentMode !== 'compare');
+        webpagePanel.classList.toggle('hidden', activeDocumentMode !== 'compare' || !compareAdvancedOpen);
+        if (compareToolPanel) {
+            compareToolPanel.classList.toggle('hidden', activeDocumentMode !== 'compare');
+            updateCompareToolPanel();
+        }
 
         if (activeDocumentMode === 'document' && uploadedDocument) {
             setFollowUps(['Summarize this document', 'List key points', 'Find risks or gaps']);
@@ -1680,11 +1754,9 @@
         if (['document', 'compare'].includes(activeDocumentMode) && !uploadedDocument) {
             addMessage('Upload a document to start.', 'bot', { persist: false });
             fileInput.click();
-            return;
         }
 
         if (!announce) return;
-        if (activeDocumentMode === 'compare') return;
         const modeMessage = {
             website: 'Website mode active. Ask anything about this page.',
             document: 'Document mode active. Ask anything about your uploaded file.',
@@ -1729,6 +1801,7 @@
             setDocumentMode(modeAfterUpload);
             status.remove();
             addMessage(`Uploaded: **${result.filename}**`, 'bot', { persist: false });
+            updateCompareToolPanel();
         } catch (error) {
             status.remove();
             addMessage('Document upload failed: ' + error.message, 'bot', { persist: false });
@@ -3814,6 +3887,89 @@
         });
     });
 
+    const COMPARE_STREAM_TIMEOUT_MS = 900000;
+
+    const streamBackendCompare = (payload, onEvent, requestId = '') => new Promise((resolve, reject) => {
+        const streamRequestId = requestId || `compare-stream-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        let settled = false;
+        let sawDone = false;
+        let sawCompareResult = false;
+        let idleTimer = null;
+
+        const cleanup = () => {
+            window.clearTimeout(idleTimer);
+            chrome.runtime.onMessage.removeListener(listener);
+        };
+
+        const finish = (value) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(value || {});
+        };
+
+        const fail = (error) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(error instanceof Error ? error : new Error(String(error || 'Compare streaming failed.')));
+        };
+
+        const partialFinish = (message) => {
+            finish({
+                type: 'compare_partial',
+                message: message || 'The structured comparison is ready, but the final explanation timed out.'
+            });
+        };
+
+        const refreshIdleTimer = () => {
+            window.clearTimeout(idleTimer);
+            idleTimer = window.setTimeout(() => {
+                if (sawCompareResult) {
+                    partialFinish('The structured comparison is ready, but the final explanation timed out. Local Ollama models can be slow on large sources.');
+                } else {
+                    fail(new Error('Compare is taking longer than expected. Local Ollama models can be slow on large sources. Try a smaller model or shorter sources.'));
+                }
+            }, COMPARE_STREAM_TIMEOUT_MS);
+        };
+
+        const listener = (message) => {
+            if (!message || message.action !== 'compareStreamEvent' || message.requestId !== streamRequestId) {
+                return;
+            }
+
+            refreshIdleTimer();
+            const event = message.event || {};
+            onEvent(event);
+
+            if (event.type === 'compare_result') {
+                sawCompareResult = true;
+            } else if (event.type === 'compare_done') {
+                sawDone = true;
+                finish(event);
+            } else if (event.type === 'error') {
+                if (sawCompareResult) {
+                    partialFinish(event.message || 'The structured comparison is ready, but the final explanation did not finish.');
+                } else {
+                    fail(new Error(event.message || 'Compare streaming failed.'));
+                }
+            }
+        };
+
+        chrome.runtime.onMessage.addListener(listener);
+        refreshIdleTimer();
+        chrome.runtime.sendMessage({ action: 'fetchCompareStream', payload, requestId: streamRequestId }, (response) => {
+            if (chrome.runtime.lastError) {
+                fail(new Error(chrome.runtime.lastError.message || 'Unknown extension messaging error.'));
+                return;
+            }
+
+            if (response && response.error && !sawDone) {
+                fail(new Error(response.error));
+            }
+        });
+    });
+
     const setSendButtonBusy = (busy) => {
         sendBtn.classList.toggle('is-stopping', busy);
         sendBtn.disabled = false;
@@ -4018,8 +4174,8 @@
             return false;
         }
 
-        if (['document', 'compare'].includes(activeDocumentMode) && !uploadedDocument) {
-            addMessage('Upload a document first, then I can build a chart from it or compare it with the website.', 'bot', { persist: false });
+        if (activeDocumentMode === 'document' && !uploadedDocument) {
+            addMessage('Upload a document first, then I can build a chart from it.', 'bot', { persist: false });
             fileInput.click();
             return true;
         }
@@ -4043,8 +4199,8 @@
                 force_provider: options.forceProvider || modelRequest.force_provider,
                 document_id: uploadedDocument?.document_id || '',
                 document_mode: activeDocumentMode,
-                fetched_webpage_text: (activeDocumentMode === 'compare' && fetchedWebpageText) ? fetchedWebpageText : '',
-                fetched_webpage_url: (activeDocumentMode === 'compare' && fetchedWebpageUrl) ? fetchedWebpageUrl : '',
+                fetched_webpage_text: fetchedWebpageText || '',
+                fetched_webpage_url: fetchedWebpageUrl || '',
                 conversation_memory: conversationMemorySnapshot(activeDocumentMode),
                 history: modeScopedHistory(activeDocumentMode)
             });
@@ -4079,9 +4235,6 @@
     };
 
     const defaultChartPrompt = () => {
-        if (activeDocumentMode === 'compare') {
-            return 'Create a comparison chart with score breakdowns, matches, partial matches, and gaps.';
-        }
         if (activeDocumentMode === 'document') {
             return 'Create a chart that visualizes the most important information in this document.';
         }
@@ -4108,6 +4261,12 @@
                 ollama_model: modelRequest.ollama_model,
                 openrouter_model: modelRequest.openrouter_model,
                 force_provider: options.forceProvider || modelRequest.force_provider,
+                document_id: uploadedDocument?.document_id || '',
+                document_mode: activeDocumentMode,
+                fetched_webpage_text: fetchedWebpageText || '',
+                fetched_webpage_url: fetchedWebpageUrl || '',
+                conversation_memory: conversationMemorySnapshot(activeDocumentMode),
+                history: modeScopedHistory(activeDocumentMode),
                 variant: options.regenerateDiagram ? 'regenerate with a different valid structure' : ''
             });
 
@@ -4302,6 +4461,466 @@
         return indexedContentHash;
     };
 
+    const comparePreviewText = (label, text) => {
+        const cleaned = normalizeText(text || '');
+        if (!cleaned) return `${label}\nNo readable text selected yet.`;
+        return `${label}\n${cleaned.slice(0, 180)}${cleaned.length > 180 ? '...' : ''}`;
+    };
+
+    const compareShortLabel = (label) => String(label || '')
+        .replace(/^Uploaded document:\s*/i, '')
+        .replace(/^Fetched webpage:\s*/i, '')
+        .replace(/^Current page:\s*/i, '')
+        .slice(0, 34) || 'not selected';
+
+    const updateCompareToolPanel = () => {
+        if (!compareToolPanel) return;
+        compareAdvancedPanel?.classList.toggle('hidden', !compareAdvancedOpen);
+        webpagePanel?.classList.toggle('hidden', activeDocumentMode !== 'compare' || !compareAdvancedOpen);
+        if (compareToggleBtn) compareToggleBtn.textContent = compareAdvancedOpen ? 'Hide sources' : 'Change sources';
+
+        const currentPageText = latestContent || getCachedPageContent() || '';
+        const sourceALabel = compareSourceA === 'current'
+            ? `Current page: ${pageTopic()}`
+            : uploadedDocument?.filename
+            ? `Uploaded document: ${uploadedDocument.filename}`
+            : 'Uploaded document';
+        const sourceAText = compareSourceA === 'current' ? currentPageText : uploadedDocument?.extracted_text || '';
+
+        let sourceBLabel = 'Fetched webpage';
+        let sourceBText = fetchedWebpageText || '';
+        if (compareSourceB === 'current') {
+            sourceBLabel = `Current page: ${pageTopic()}`;
+            sourceBText = currentPageText;
+        } else if (compareSourceB === 'uploaded') {
+            sourceBLabel = compareSourceBDocument?.filename ? `Uploaded document: ${compareSourceBDocument.filename}` : 'Uploaded document';
+            sourceBText = compareSourceBDocument?.extracted_text || '';
+        } else if (fetchedWebpageUrl) {
+            sourceBLabel = `Fetched webpage: ${shortDisplayUrl(fetchedWebpageUrl)}`;
+        }
+
+        if (compareAPreview) compareAPreview.textContent = comparePreviewText(sourceALabel, sourceAText);
+        if (compareBPreview) compareBPreview.textContent = comparePreviewText(sourceBLabel, sourceBText);
+        if (compareCompactSummary) {
+            const aReady = normalizeText(sourceAText).length >= 20;
+            const bReady = normalizeText(sourceBText).length >= 20;
+            compareCompactSummary.textContent = `A: ${compareShortLabel(sourceALabel)} ${aReady ? 'ready' : 'needs text'} | B: ${compareShortLabel(sourceBLabel)} ${bReady ? 'ready' : 'needs text'}`;
+        }
+
+        [
+            [compareAUploadBtn, compareSourceA === 'document'],
+            [compareACurrentBtn, compareSourceA === 'current'],
+            [compareBFetchBtn, compareSourceB === 'fetched'],
+            [compareBUploadBtn, compareSourceB === 'uploaded'],
+            [compareBCurrentBtn, compareSourceB === 'current'],
+        ].forEach(([button, active]) => button?.classList.toggle('active', Boolean(active)));
+    };
+
+    const uploadCompareSourceBDocument = async (file) => {
+        if (!file) return;
+        const status = addMessage(`Uploading Source B: ${file.name}...`, 'bot', { persist: false });
+        status.classList.add('typing');
+        try {
+            const contentBase64 = await fileToBase64(file);
+            updateStatusMessage(status, 'Processing Source B document...');
+            const result = await sendBackendMessage('fetchDocumentUpload', {
+                filename: file.name,
+                mime_type: file.type || '',
+                page_url: window.location.href,
+                content_base64: contentBase64
+            });
+            compareSourceBDocument = {
+                ...result,
+                extracted_text: result.extracted_text || ''
+            };
+            compareSourceB = 'uploaded';
+            status.remove();
+            addMessage(`Source B uploaded: **${result.filename}**`, 'bot', { persist: false });
+            updateCompareToolPanel();
+        } catch (error) {
+            status.remove();
+            addMessage('Source B upload failed: ' + error.message, 'bot', { persist: false });
+        } finally {
+            if (compareBFileInput) compareBFileInput.value = '';
+        }
+    };
+
+    const resolveCompareSource = async (side, statusMessage) => {
+        const source = side === 'a' ? compareSourceA : compareSourceB;
+        if (side === 'a' && source === 'document') {
+            const text = normalizeText(uploadedDocument?.extracted_text || '');
+            return {
+                text,
+                label: uploadedDocument?.filename ? `Uploaded document: ${uploadedDocument.filename}` : 'Uploaded document',
+                contentHash: ''
+            };
+        }
+        if (side === 'b' && source === 'uploaded') {
+            const text = normalizeText(compareSourceBDocument?.extracted_text || '');
+            return {
+                text,
+                label: compareSourceBDocument?.filename ? `Uploaded document: ${compareSourceBDocument.filename}` : 'Uploaded document',
+                contentHash: ''
+            };
+        }
+        if (side === 'b' && source === 'fetched') {
+            return {
+                text: normalizeText(fetchedWebpageText || ''),
+                label: fetchedWebpageUrl ? `Fetched webpage: ${shortDisplayUrl(fetchedWebpageUrl)}` : 'Fetched webpage',
+                contentHash: ''
+            };
+        }
+
+        updateStatusMessage(statusMessage, `Reading current page for Source ${side.toUpperCase()}...`);
+        const contentHash = await prepareLivePageContent(statusMessage);
+        return {
+            text: normalizeText(latestContent || ''),
+            label: `Current page: ${pageTopic()}`,
+            contentHash
+        };
+    };
+
+    const tableCell = (value, maxLength = 120) => {
+        const text = String(value || '').replace(/\|/g, '\\|').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+        return text.length > maxLength ? `${text.slice(0, maxLength - 3).trim()}...` : text;
+    };
+
+    const titleCaseCompare = (value) => String(value || '')
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (match) => match.toUpperCase());
+
+    const compareRowSummary = (row) => {
+        const impact = titleCaseCompare(row.impact || '');
+        return [
+            tableCell(row.dimension, 42),
+            tableCell(row.status, 24),
+            tableCell(row.match_quality || 'Must Confirm', 18),
+            tableCell(impact || 'Neutral', 18),
+            tableCell(row.source_a_evidence, 105),
+            tableCell(row.source_b_evidence, 105),
+            tableCell(row.reason, 120)
+        ];
+    };
+
+    const compareBulletLines = (rows, limit = 4) => rows
+        .slice(0, limit)
+        .map((row) => `- **${tableCell(row.dimension, 56)}:** ${tableCell(row.reason || row.status, 140)}`);
+
+    const compareSectionTable = (rows, sectionType = 'summary', limit = 5) => {
+        if (!rows.length) return '';
+        const actionForRow = (row) => {
+            const status = row.status || '';
+            const quality = row.match_quality || '';
+            if (sectionType === 'match') return 'Keep this evidence visible and measurable.';
+            if (sectionType === 'extra') return row.impact === 'positive' ? 'Use as an extra strength.' : 'Mention only if relevant.';
+            if (sectionType === 'risk' || status === 'Conflict' || quality === 'Must Confirm') return 'Confirm before deciding.';
+            if (status === 'Partial Match') return 'Strengthen with clearer proof.';
+            if (status === 'Missing From A' || status === 'Missing From B') return 'Add or verify this gap.';
+            return 'Review this item.';
+        };
+        return [
+            '| Area | Quality | Evidence | Next step |',
+            '|---|---|---|---|',
+            ...rows.slice(0, limit).map((row) => {
+                const evidence = row.source_b_evidence && !/^not found/i.test(row.source_b_evidence)
+                    ? row.source_b_evidence
+                    : row.source_a_evidence;
+                return `| ${tableCell(row.dimension, 46)} | ${tableCell(row.match_quality || row.status, 24)} | ${tableCell(evidence || row.reason, 110)} | ${tableCell(actionForRow(row), 80)} |`;
+            })
+        ].join('\n');
+    };
+
+    const compareResultMarkdown = (result) => {
+        const rows = Array.isArray(result.comparison_table) ? result.comparison_table : [];
+        const visibleRows = rows.slice(0, 10);
+        const table = rows.length
+            ? [
+                '| Area | Status | Quality | Impact | Source A | Source B | Reason |',
+                '|---|---|---|---|---|---|---|',
+                ...visibleRows.map((row) => {
+                    const cells = compareRowSummary(row);
+                    return `| ${cells.join(' | ')} |`;
+                })
+            ].join('\n')
+            : 'No comparison rows returned.';
+        const count = (items) => Array.isArray(items) ? items.length : 0;
+        const docTypes = result.document_types || {};
+        const scoreDetails = result.score_details || {};
+        const statusCounts = scoreDetails.status_counts || {};
+        const impactCounts = scoreDetails.impact_counts || {};
+        const matches = Array.isArray(result.matches) ? result.matches : [];
+        const gaps = [
+            ...(Array.isArray(result.missing_from_a) ? result.missing_from_a : []),
+            ...(Array.isArray(result.missing_from_b) ? result.missing_from_b : [])
+        ];
+        const weakRows = [
+            ...gaps,
+            ...(Array.isArray(result.partial_matches) ? result.partial_matches : [])
+        ];
+        const conflicts = Array.isArray(result.conflicts) ? result.conflicts : [];
+        const riskRows = [
+            ...conflicts,
+            ...rows.filter((row) => row.match_quality === 'Must Confirm' && row.status !== 'Conflict')
+        ];
+        const extras = Array.isArray(result.extra_strengths) ? result.extra_strengths : [];
+        const resumeImprovements = result.resume_improvements || {};
+        const missingKeywords = Array.isArray(resumeImprovements.missing_keywords) ? resumeImprovements.missing_keywords : [];
+        const whatToAdd = Array.isArray(resumeImprovements.what_to_add) ? resumeImprovements.what_to_add : [];
+        const coverLetterLine = resumeImprovements.cover_letter_line || '';
+        const finalDecision = result.final_decision || '';
+        const decisionReason = result.decision_reason || '';
+        const decisionSection = finalDecision
+            ? `#### Final decision\n**${tableCell(finalDecision, 40)}**${decisionReason ? ` - ${tableCell(decisionReason, 220)}` : ''}`
+            : '';
+        const resumeImprovementSection = (missingKeywords.length || whatToAdd.length || coverLetterLine)
+            ? [
+                '#### Resume improvements',
+                missingKeywords.length ? `**Missing keywords:** ${missingKeywords.map((item) => `\`${tableCell(item, 36)}\``).join(', ')}` : '',
+                whatToAdd.length ? `**What to add:**\n${whatToAdd.slice(0, 6).map((item) => `- ${tableCell(item, 150)}`).join('\n')}` : '',
+                coverLetterLine ? `**Cover letter line:** ${tableCell(coverLetterLine, 220)}` : ''
+            ].filter(Boolean).join('\n\n')
+            : '';
+        const overview = [
+            '| Item | Value |',
+            '|---|---|',
+            `| Score | ${result.score ?? 'N/A'}/100 |`,
+            `| Verdict | ${tableCell(result.verdict || 'Not available', 80)} |`,
+            finalDecision ? `| Final Decision | ${tableCell(finalDecision, 60)} |` : '',
+            `| Source A Type | ${tableCell(docTypes.a || 'Unknown', 60)} |`,
+            `| Source B Type | ${tableCell(docTypes.b || 'Unknown', 60)} |`,
+            `| Matches | ${count(result.matches)} |`,
+            `| Gaps | ${count(result.missing_from_a) + count(result.missing_from_b)} |`,
+            `| Conflicts | ${count(result.conflicts)} |`
+        ].filter(Boolean).join('\n');
+        const impactLine = Object.keys(impactCounts).length
+            ? Object.entries(impactCounts).map(([key, value]) => `${titleCaseCompare(key)}: ${value}`).join(', ')
+            : Object.entries(statusCounts).map(([key, value]) => `${key}: ${value}`).join(', ');
+
+        return [
+            `### Compare Report`,
+            overview,
+            '',
+            impactLine ? `**Impact summary:** ${impactLine}` : '',
+            result.warning ? `**Note:** ${result.warning}` : '',
+            '',
+            decisionSection,
+            '',
+            matches.length ? `#### Strong matches\n${compareSectionTable(matches, 'match')}` : '',
+            weakRows.length ? `#### Gaps and weak areas\n${compareSectionTable(weakRows, 'gap', 6)}` : '',
+            riskRows.length ? `#### Risks and confirmations\n${compareSectionTable(riskRows, 'risk', 6)}` : '',
+            extras.length ? `#### Extra strengths\n${compareSectionTable(extras, 'extra', 5)}` : '',
+            resumeImprovementSection,
+            '',
+            `#### Recommendation`,
+            `> ${result.recommendation || 'Review the comparison table before deciding.'}`,
+            '',
+            `#### Side-by-side comparison`,
+            table,
+            '',
+            result.answer ? `#### Explanation\n${result.answer}` : ''
+        ].filter(Boolean).join('\n\n');
+    };
+
+    const runCompareTool = async (payload, streamHandlers = {}) => {
+        let baseResult = null;
+        let finalResult = null;
+        let streamedAnswer = '';
+        const doneEvent = await streamBackendCompare(payload, (event) => {
+            if (event.type === 'compare_result') {
+                baseResult = event.result || null;
+                streamHandlers.onCompareResult?.(baseResult, event);
+            } else if (event.type === 'meta') {
+                streamHandlers.onMeta?.(event);
+            } else if (event.type === 'delta') {
+                streamedAnswer += event.text || '';
+                streamHandlers.onDelta?.(streamedAnswer, event, baseResult);
+            } else if (event.type === 'compare_done') {
+                finalResult = event.result || null;
+                streamHandlers.onDone?.(finalResult, event);
+            }
+            streamHandlers.onEvent?.(event);
+        }, streamHandlers.requestId || '');
+
+        const result = finalResult || doneEvent.result || (baseResult ? { ...baseResult, answer: streamedAnswer } : null);
+        if (!result || !result.ok) {
+            throw new Error(result?.error || 'No comparison was returned.');
+        }
+        if (doneEvent.type === 'compare_partial') {
+            const warning = doneEvent.message || 'The structured comparison is ready, but the final explanation timed out.';
+            result.warning = warning;
+            result.answer = `${streamedAnswer || ''}\n\n${warning}`.trim();
+            result.confidence = result.confidence || 'compare tool partial';
+        }
+        return result;
+    };
+
+    const renderCompareResult = async (result, meta = {}) => {
+        await addBotMessageAnimated(
+            compareResultMarkdown(result),
+            result.sources || [],
+            false,
+            {
+                provider: result.provider,
+                model: result.model,
+                confidence: result.confidence || 'compare tool',
+                question: meta.question || result.compare_goal || 'Compare',
+                contentHash: meta.contentHash || '',
+                followUps: Array.isArray(result.suggestions) ? result.suggestions.slice(0, 3) : []
+            }
+        );
+    };
+
+    const collapseCompareControls = () => {
+        compareAdvancedOpen = false;
+        updateCompareToolPanel();
+    };
+
+    const executeComparePayload = async (payload, options = {}) => {
+        const requestId = options.requestId || `compare-${Date.now()}-${++requestSerial}`;
+        activeBackendRequestId = requestId;
+        collapseCompareControls();
+        let streamMessage = null;
+        let streamedBaseResult = null;
+        const removeStatus = () => {
+            if (options.statusMessage?.isConnected) {
+                options.statusMessage.remove();
+            }
+        };
+        setSendButtonBusy(true);
+
+        try {
+            const result = await runCompareTool(payload, {
+                requestId,
+                onCompareResult: (baseResult) => {
+                    streamedBaseResult = baseResult;
+                    removeStatus();
+                    streamMessage = createStreamingBotMessage('Writing comparison explanation...');
+                    updateStreamingBotMessage(streamMessage, compareResultMarkdown({ ...baseResult, answer: 'Writing final explanation...' }));
+                },
+                onMeta: () => {},
+                onDelta: (answer) => {
+                    if (streamMessage && streamedBaseResult) {
+                        updateStreamingBotMessage(streamMessage, compareResultMarkdown({ ...streamedBaseResult, answer }));
+                    }
+                }
+            });
+            removeStatus();
+            const details = {
+                provider: result.provider,
+                model: result.model,
+                confidence: result.confidence || 'compare tool',
+                question: options.question || payload.compare_goal || 'Compare',
+                contentHash: options.contentHash || '',
+                followUps: Array.isArray(result.suggestions) ? result.suggestions.slice(0, 3) : []
+            };
+            if (streamMessage) {
+                finalizeStreamingBotMessage(streamMessage, compareResultMarkdown(result), result.sources || [], false, details);
+            } else {
+                await renderCompareResult(result, details);
+            }
+            return result;
+        } finally {
+            if (activeBackendRequestId === requestId) {
+                activeBackendRequestId = '';
+            }
+            setSendButtonBusy(false);
+            updateCompareToolPanel();
+            input.focus();
+        }
+    };
+
+    const askCompareGoal = (payload, meta = {}) => {
+        pendingCompareRequest = { payload, meta };
+        clearFollowUpButtons();
+        const msg = addMessage('How do you want me to compare these sources?', 'bot', { persist: false });
+        const goals = ['Role fit', 'Feature comparison', 'Policy comparison', 'Pricing comparison', 'General comparison'];
+        const actions = document.createElement('div');
+        actions.className = 'message-followups compare-goal-actions';
+        goals.forEach((goal) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = goal;
+            button.onclick = async () => {
+                const pending = pendingCompareRequest;
+                pendingCompareRequest = null;
+                clearFollowUpButtons();
+                addMessage(goal, 'user');
+                if (!pending) return;
+                const requestId = `compare-${Date.now()}-${++requestSerial}`;
+                const status = addToolStatusMessage('Compare Tool', `Comparing by ${goal}...`);
+                try {
+                    await executeComparePayload(
+                        { ...pending.payload, compare_goal: goal },
+                        { ...pending.meta, question: `${pending.meta.question || 'Compare'} (${goal})`, requestId, statusMessage: status }
+                    );
+                } catch (error) {
+                    if (status.isConnected) status.remove();
+                    addMessage('Compare Tool failed: ' + error.message, 'bot', { persist: false });
+                    console.error('Compare Tool Error:', error);
+                }
+            };
+            actions.appendChild(button);
+        });
+        msg.insertAdjacentElement('afterend', actions);
+        scrollMessagesToBottom();
+    };
+
+    const runCompareToolFromPanel = async () => {
+        if (activeDocumentMode !== 'compare') setDocumentMode('compare');
+        const currentRequest = ++requestSerial;
+        const compareRequestId = `compare-tool-${Date.now()}-${currentRequest}`;
+        addMessage('Run Compare', 'user');
+        const status = addToolStatusMessage('Compare Tool', 'Preparing sources...');
+        let statusRemoved = false;
+        const removeStatus = () => {
+            if (statusRemoved) return;
+            statusRemoved = true;
+            status.remove();
+        };
+        setSendButtonBusy(true);
+
+        try {
+            const sourceA = await resolveCompareSource('a', status);
+            const sourceB = await resolveCompareSource('b', status);
+            if (!sourceA.text || sourceA.text.length < 20) {
+                removeStatus();
+                addMessage('Source A needs readable text. Upload a document or use the current page.', 'bot', { persist: false });
+                return;
+            }
+            if (!sourceB.text || sourceB.text.length < 20) {
+                removeStatus();
+                addMessage('Source B needs readable text. Fetch a URL, upload a document, or use the current page.', 'bot', { persist: false });
+                return;
+            }
+            updateStatusMessage(status, 'Running deterministic comparison...');
+            const modelRequest = selectedModelRequest();
+            const payload = {
+                document_a_text: sourceA.text,
+                document_a_label: sourceA.label,
+                document_b_text: sourceB.text,
+                document_b_label: sourceB.label,
+                compare_goal: 'General comparison',
+                ollama_model: modelRequest.ollama_model,
+                openrouter_model: modelRequest.openrouter_model,
+                force_provider: modelRequest.force_provider
+            };
+            removeStatus();
+            askCompareGoal(payload, {
+                question: 'Compare',
+                contentHash: sourceA.contentHash || sourceB.contentHash || '',
+                requestId: compareRequestId
+            });
+        } catch (error) {
+            removeStatus();
+            addMessage('Compare Tool failed: ' + error.message, 'bot', { persist: false });
+            console.error('Compare Tool Error:', error);
+        } finally {
+            setSendButtonBusy(false);
+            updateCompareToolPanel();
+            input.focus();
+        }
+    };
+
     const handleSend = async (presetQuestion = '', options = {}) => {
         if (activeBackendRequestId && typeof presetQuestion !== 'string') {
             abortCurrentRequest();
@@ -4331,7 +4950,7 @@
             input.style.height = '';
         }
 
-        if (!options.revisionOf && !options.forceProvider && (options.forceChart || detectChartToolIntent(question))) {
+        if (requestMode !== 'compare' && !options.revisionOf && !options.forceProvider && (options.forceChart || detectChartToolIntent(question))) {
             if (await runChartTool(question, options)) {
                 return;
             }
@@ -4381,6 +5000,79 @@
 
         if (!options.revisionOf && requestMode === 'document' && !options.forceProvider && handleLocalDocumentFind(question)) {
             return;
+        }
+
+        if (!options.revisionOf && requestMode === 'compare') {
+            const compareRequestId = `compare-${Date.now()}-${currentRequest}`;
+            const typing = addAnswerStatusMessage('compare', 'Preparing Compare Tool...');
+            typing.classList.add('typing');
+            let typingRemoved = false;
+            const removeTyping = () => {
+                if (typingRemoved) return;
+                typingRemoved = true;
+                typing.remove();
+            };
+            setSendButtonBusy(true);
+
+            try {
+                const documentAText = normalizeText(uploadedDocument?.extracted_text || '');
+                if (!documentAText || documentAText.length < 20) {
+                    removeTyping();
+                    addMessage('The uploaded document does not have enough readable text to compare. Try uploading a PDF, DOCX, TXT, MD, CSV, JSON, or HTML file.', 'bot', { persist: false });
+                    return;
+                }
+
+                let documentBText = normalizeText(fetchedWebpageText || '');
+                let documentBLabel = fetchedWebpageUrl ? `Fetched webpage: ${shortDisplayUrl(fetchedWebpageUrl)}` : `Current page: ${pageTopic()}`;
+                let contentHash = '';
+
+                if (!documentBText) {
+                    updateStatusMessage(typing, 'Reading current page as Document B...');
+                    contentHash = await prepareLivePageContent(typing);
+                    documentBText = normalizeText(latestContent || '');
+                    documentBLabel = `Current page: ${pageTopic()}`;
+                }
+
+                if (stoppedSerial === currentRequest) return;
+                if (!documentBText || documentBText.length < 20) {
+                    removeTyping();
+                    addMessage('Compare Tool needs a second source with readable text. Fetch a webpage or use a page with more visible content.', 'bot', { persist: false });
+                    return;
+                }
+
+                updateStatusMessage(typing, 'Comparing the two sources...');
+                const modelRequest = selectedModelRequest();
+                const payload = {
+                    document_a_text: documentAText,
+                    document_a_label: uploadedDocument?.filename ? `Uploaded document: ${uploadedDocument.filename}` : 'Uploaded document',
+                    document_b_text: documentBText,
+                    document_b_label: documentBLabel,
+                    compare_goal: backendQuestion,
+                    ollama_model: modelRequest.ollama_model,
+                    openrouter_model: modelRequest.openrouter_model,
+                    force_provider: options.forceProvider || modelRequest.force_provider
+                };
+                if (stoppedSerial === currentRequest) return;
+                removeTyping();
+                askCompareGoal(payload, {
+                    question,
+                    contentHash,
+                    requestId: compareRequestId
+                });
+                return;
+            } catch (error) {
+                removeTyping();
+                if (stoppedSerial === currentRequest || /cancelled/i.test(error.message || '')) {
+                    stoppedSerial = currentRequest;
+                } else {
+                    addMessage('Compare Tool failed: ' + error.message, 'bot', { persist: false });
+                    console.error('Compare Tool Error:', error);
+                }
+                return;
+            } finally {
+                setSendButtonBusy(false);
+                input.focus();
+            }
         }
 
         const backendRequestId = `chat-${Date.now()}-${currentRequest}`;
@@ -5132,7 +5824,9 @@
         uploadedDocument = null;
         fetchedWebpageText = '';
         fetchedWebpageUrl = '';
+        compareSourceBDocument = null;
         updateDocumentChip();
+        updateCompareToolPanel();
         setDocumentMode('website');
         addMessage('Document removed. I will answer from the website again.', 'bot', { persist: false });
     };
@@ -5178,12 +5872,15 @@
                 fetchedWebpageUrl = '';
                 chip.remove();
                 addMessage('Webpage removed. Now I will compare your document with the current website page.', 'bot', { persist: false });
+                updateCompareToolPanel();
             };
             webpagePanel.appendChild(chip);
 
             status.remove();
             addMessage(`Got it — **${shortDisplayUrl(url)}** loaded (${Math.round(fetchedWebpageText.length / 1000)}k chars). Now ask me to compare it with your document.`, 'bot', { persist: false });
             setFollowUps(['Compare key points', 'Show differences', 'What is missing in my document?']);
+            compareSourceB = 'fetched';
+            updateCompareToolPanel();
         } catch (err) {
             status.remove();
             addMessage('Could not fetch that page: ' + err.message, 'bot', { persist: false });
@@ -5197,6 +5894,59 @@
     webpageUrlInput.onkeydown = (e) => {
         if (e.key === 'Enter') { e.preventDefault(); fetchWebpageForCompare(); }
     };
+    if (compareToggleBtn) {
+        compareToggleBtn.onclick = () => {
+            compareAdvancedOpen = !compareAdvancedOpen;
+            updateCompareToolPanel();
+        };
+    }
+    if (compareAUploadBtn) {
+        compareAUploadBtn.onclick = () => {
+            compareAdvancedOpen = true;
+            compareSourceA = 'document';
+            updateCompareToolPanel();
+            fileInput.click();
+        };
+    }
+    if (compareACurrentBtn) {
+        compareACurrentBtn.onclick = async () => {
+            compareSourceA = 'current';
+            await prepareLivePageContent(null);
+            updateCompareToolPanel();
+        };
+    }
+    if (compareBFetchBtn) {
+        compareBFetchBtn.onclick = () => {
+            compareAdvancedOpen = true;
+            compareSourceB = 'fetched';
+            updateCompareToolPanel();
+            webpageUrlInput.focus();
+        };
+    }
+    if (compareBUploadBtn) {
+        compareBUploadBtn.onclick = () => {
+            compareAdvancedOpen = true;
+            compareSourceB = 'uploaded';
+            updateCompareToolPanel();
+            compareBFileInput?.click();
+        };
+    }
+    if (compareBCurrentBtn) {
+        compareBCurrentBtn.onclick = async () => {
+            compareSourceB = 'current';
+            await prepareLivePageContent(null);
+            updateCompareToolPanel();
+        };
+    }
+    if (compareBFileInput) {
+        compareBFileInput.onchange = () => uploadCompareSourceBDocument(compareBFileInput.files && compareBFileInput.files[0]);
+    }
+    if (compareRunBtn) {
+        compareRunBtn.onclick = runCompareToolFromPanel;
+    }
+    if (compareGoalSelect) {
+        compareGoalSelect.onchange = updateCompareToolPanel;
+    }
     fileInput.onchange = () => uploadDocument(fileInput.files && fileInput.files[0]);
     reindexBtn.onclick = async () => {
         const status = addMessage('Refreshing page index...', 'bot', { persist: false });
