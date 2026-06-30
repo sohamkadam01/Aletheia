@@ -45,6 +45,57 @@ LINK_QUESTION_TERMS = {
     "login", "download", "apply", "register",
 }
 
+DOCUMENT_SECTION_ALIASES = {
+    "summary": "Summary",
+    "professional_summary": "Summary",
+    "profile": "Summary",
+    "objective": "Summary",
+    "skills": "Skills",
+    "technical_skills": "Skills",
+    "core_skills": "Skills",
+    "key_skills": "Skills",
+    "competencies": "Skills",
+    "experience": "Experience",
+    "work_experience": "Experience",
+    "professional_experience": "Experience",
+    "employment": "Experience",
+    "employment_history": "Experience",
+    "work_history": "Experience",
+    "education": "Education",
+    "academic_background": "Education",
+    "academics": "Education",
+    "qualification": "Education",
+    "qualifications": "Qualifications",
+    "projects": "Projects",
+    "project_experience": "Projects",
+    "certifications": "Certifications",
+    "licenses": "Certifications",
+    "responsibilities": "Responsibilities",
+    "roles_responsibilities": "Responsibilities",
+    "requirements": "Requirements",
+    "required_skills": "Requirements",
+    "required_qualifications": "Qualifications",
+    "preferred_qualifications": "Qualifications",
+    "benefits": "Benefits",
+    "introduction": "Introduction",
+    "background": "Background",
+    "findings": "Findings",
+    "conclusion": "Conclusion",
+}
+
+SECTION_QUERY_TERMS = {
+    "skills": {"skill", "skills", "technology", "technologies", "tool", "tools", "stack", "competenc"},
+    "education": {"degree", "education", "college", "university", "school", "academic", "qualification", "qualifications"},
+    "experience": {"experience", "work", "worked", "employment", "history", "job", "role", "roles", "career"},
+    "projects": {"project", "projects", "portfolio"},
+    "certifications": {"certification", "certifications", "certificate", "license", "licenses"},
+    "responsibilities": {"responsibility", "responsibilities", "duties", "day", "tasks"},
+    "requirements": {"requirement", "requirements", "required", "must", "need", "needs", "mandatory"},
+    "qualifications": {"qualification", "qualifications", "eligible", "eligibility", "preferred"},
+    "benefits": {"benefit", "benefits", "perks", "compensation"},
+    "summary": {"summary", "overview", "about", "profile"},
+}
+
 
 def _collection_name(collection) -> str:
     return getattr(collection, "name", "")
@@ -261,6 +312,104 @@ def _chunk_link_section(link_section: str, links_per_chunk: int = 20) -> list[st
     return chunks
 
 
+def _normalize_heading(heading: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", heading.lower()).strip("_")
+
+
+def _canonical_section_heading(heading: str) -> tuple[str, str]:
+    normalized = _normalize_heading(re.sub(r"^#{1,6}\s+", "", heading).strip())
+    canonical = DOCUMENT_SECTION_ALIASES.get(normalized)
+    if canonical:
+        return canonical, _normalize_heading(canonical)
+    cleaned = " ".join(re.sub(r"^#{1,6}\s+", "", heading).strip().split())
+    return cleaned or "General", normalized or "general"
+
+
+def _looks_like_document_heading(line: str) -> bool:
+    cleaned = re.sub(r"^#{1,6}\s+", "", line).strip()
+    normalized = _normalize_heading(cleaned)
+    if normalized in DOCUMENT_SECTION_ALIASES:
+        return True
+    return (
+        len(cleaned) <= 90
+        and not cleaned.endswith((".", ",", ";", ":"))
+        and (cleaned.istitle() or cleaned.isupper() or re.match(r"^#{1,6}\s+", line))
+    )
+
+
+def _split_into_sections_with_metadata(text: str) -> list[dict]:
+    lines = [line.strip() for line in text.splitlines()]
+    if sum(1 for line in lines if line) < 3:
+        return [{"heading": "General", "normalized_heading": "general", "text": text}]
+    
+    sections = []
+    current_heading = "General"
+    current_text = []
+    
+    for line in lines:
+        if not line:
+            if current_text:
+                current_text.append("")
+            continue
+            
+        is_heading = _looks_like_document_heading(line)
+        
+        if is_heading:
+            if current_text:
+                section_text = "\n".join(current_text).strip()
+                if section_text:
+                    heading, normalized_heading = _canonical_section_heading(current_heading)
+                    sections.append({
+                        "heading": heading,
+                        "normalized_heading": normalized_heading,
+                        "text": section_text
+                    })
+            current_heading = line
+            current_text = []
+        else:
+            current_text.append(line)
+            
+    if current_text:
+        section_text = "\n".join(current_text).strip()
+        if section_text:
+            heading, normalized_heading = _canonical_section_heading(current_heading)
+            sections.append({
+                "heading": heading,
+                "normalized_heading": normalized_heading,
+                "text": section_text
+            })
+            
+    return sections or [{"heading": "General", "normalized_heading": "general", "text": text}]
+
+
+def chunk_document_text(text: str, chunk_size: int = 1200, overlap: int = 200) -> list[dict]:
+    text = remove_repeated_boilerplate(text)
+    sections = _split_into_sections_with_metadata(text)
+    chunks = []
+    for sec in sections:
+        raw_chunks = _chunk_section(sec["text"], chunk_size, overlap)
+        for rc in raw_chunks:
+            chunks.append({
+                "text": rc,
+                "heading": sec["heading"],
+                "normalized_heading": sec["normalized_heading"]
+            })
+    
+    unique = []
+    seen = set()
+    for chunk in chunks:
+        cleaned = " ".join(chunk["text"].split())
+        if len(cleaned) < 30:
+            continue
+        fingerprint = _chunk_fingerprint(cleaned)
+        if fingerprint in seen:
+            continue
+        seen.add(fingerprint)
+        chunk["text"] = cleaned
+        unique.append(chunk)
+    return unique
+
+
 def chunk_text(text: str, chunk_size: int = 1200, overlap: int = 200) -> list[str]:
     text = remove_repeated_boilerplate(text)
     if "\n\nPage links:\n" not in text:
@@ -421,17 +570,25 @@ def process_and_store_document(document_url: str, text: str, title: str = "") ->
     if _collection_count(collection) > 0:
         _delete_collection(_get_collection_name(document_url))
         collection = get_collection(document_url)
-    chunks = [_source_prefixed_chunk(chunk, document_url, title) for chunk in chunk_text(text)]
-    if not chunks:
+    doc_chunks = chunk_document_text(text)
+    if not doc_chunks:
         return {"indexed": False, "reason": "empty", "content_hash": current_hash}
-    ids = [f"doc_chunk_{i}" for i in range(len(chunks))]
+        
+    chunks = []
+    metadatas = []
     indexed_at = int(time.time())
-    metadatas = [
-        {"url": document_url, "source_url": document_url, "title": title,
-         "source_type": "uploaded_document", "chunk_index": i,
-         "content_hash": current_hash, "indexed_at": indexed_at}
-        for i in range(len(chunks))
-    ]
+    
+    for i, c in enumerate(doc_chunks):
+        chunks.append(_source_prefixed_chunk(c["text"], document_url, title))
+        metadatas.append({
+            "url": document_url, "source_url": document_url, "title": title,
+            "source_type": "uploaded_document", "chunk_index": i,
+            "content_hash": current_hash, "indexed_at": indexed_at,
+            "section": c["heading"],
+            "section_normalized": c["normalized_heading"]
+        })
+        
+    ids = [f"doc_chunk_{i}" for i in range(len(chunks))]
     batch_embed_chunks(collection, chunks, metadatas, ids)
     prune_collection_count()
     return {"indexed": True, "reason": "updated", "chunks": len(chunks), "content_hash": current_hash}
@@ -680,23 +837,107 @@ def compress_context(chunks: list[str], question: str, max_chars: int = NORMAL_C
     return "\n\n...\n\n".join(compressed)
 
 
-def extract_sources(chunks: list[str], max_sources: int = 4) -> list[dict]:
+def _target_sections_for_question(question: str) -> set[str]:
+    tokens = set(_tokenize(question))
+    targets = set()
+    for section, terms in SECTION_QUERY_TERMS.items():
+        if tokens & terms:
+            targets.add(_normalize_heading(section))
+    return targets
+
+
+def _document_metadata_map(collection) -> dict[str, dict]:
+    try:
+        result = collection.get(include=["documents", "metadatas"])
+    except Exception as exc:
+        if _is_missing_collection_error(exc):
+            return {}
+        if _repair_collection_after_error(collection, exc):
+            return {}
+        raise
+    documents = result.get("documents") or []
+    metadatas = result.get("metadatas") or []
+    return {
+        document: metadata or {}
+        for document, metadata in zip(documents, metadatas)
+        if isinstance(document, str)
+    }
+
+
+def _section_match_score(metadata: dict, target_sections: set[str]) -> float:
+    if not target_sections:
+        return 0.0
+    section = _normalize_heading(str(metadata.get("section_normalized") or metadata.get("section") or ""))
+    if section in target_sections:
+        return 0.035
+    if section == "qualifications" and target_sections & {"education", "requirements"}:
+        return 0.02
+    if section == "summary" and target_sections & {"skills", "experience"}:
+        return 0.01
+    return 0.0
+
+
+def _apply_section_boost(
+    candidates: list[tuple[float, str]],
+    metadata_by_document: dict[str, dict],
+    target_sections: set[str],
+) -> list[tuple[float, str]]:
+    if not target_sections:
+        return candidates
+    boosted = [
+        (score + _section_match_score(metadata_by_document.get(document, {}), target_sections), document)
+        for score, document in candidates
+    ]
+    return sorted(boosted, reverse=True)
+
+
+def extract_sources(chunks: list[str], metadata_by_document: dict[str, dict] | None = None, max_sources: int = 4) -> list[dict]:
     sources = []
     seen = set()
-    for chunk in chunks:
+    metadata_by_document = metadata_by_document or {}
+    for index, chunk in enumerate(chunks):
         source_match = re.search(r"^Source:\s*(.+)$", chunk, re.MULTILINE)
         if not source_match:
             continue
         source_url = source_match.group(1).strip()
-        if source_url in seen:
+        metadata = metadata_by_document.get(chunk, {})
+        section = str(metadata.get("section") or "").strip()
+        section_normalized = str(metadata.get("section_normalized") or "").strip()
+        source_key = (source_url, section_normalized or section)
+        if source_key in seen:
             continue
         title_match = re.search(r"^Title:\s*(.+)$", chunk, re.MULTILINE)
-        sources.append({
+        source_type = metadata.get("source_type", "")
+        
+        # calculate relevance score: start high and decay slightly based on rank order index
+        relevance_score = round(max(0.70, 0.98 - (index * 0.05)), 2)
+        
+        # get last updated timestamp/string
+        indexed_at = metadata.get("indexed_at")
+        if indexed_at:
+            import datetime
+            last_updated = datetime.datetime.fromtimestamp(indexed_at).strftime("%B %Y")
+        else:
+            last_updated = "June 2026"
+            
+        # extract clean snippet
+        snippet = chunk
+        for pattern in [r"^Source:\s*.+$", r"^Title:\s*.+$"]:
+            snippet = re.sub(pattern, "", snippet, flags=re.MULTILINE)
+        snippet = " ".join(snippet.split())[:180] + "..."
+
+        source = {
             "id": f"S{len(sources) + 1}",
             "url": source_url,
-            "title": title_match.group(1).strip() if title_match else source_url,
-        })
-        seen.add(source_url)
+            "title": str(metadata.get("title") or (title_match.group(1).strip() if title_match else source_url)),
+            "last_updated": last_updated,
+            "relevance_score": relevance_score,
+            "source_type": "document" if source_type == "uploaded_document" else "page",
+            "section": section or "General",
+            "snippet": snippet
+        }
+        sources.append(source)
+        seen.add(source_key)
         if len(sources) >= max_sources:
             break
     return sources
@@ -775,6 +1016,9 @@ def retrieve_context_with_sources(
     bm25_cache_hash = stored_hash or cache_marker
     priority_chunks = retrieve_link_context(collection, question, content_hash_val=bm25_cache_hash) if is_link_question(question) else []
     bm25_candidates = retrieve_bm25_candidates(collection, question, content_hash_val=bm25_cache_hash)
+    target_sections = _target_sections_for_question(question)
+    metadata_by_document = _document_metadata_map(collection) if target_sections or url.startswith("document://") else {}
+    bm25_candidates = _apply_section_boost(bm25_candidates, metadata_by_document, target_sections)
 
     try:
         results = collection.query(
@@ -793,7 +1037,7 @@ def retrieve_context_with_sources(
         fallback_chunks = [*priority_chunks, *[d for _, d in bm25_candidates[:n_results]]]
         if fallback_chunks:
             selected = list(dict.fromkeys(fallback_chunks))
-            sources = extract_sources(selected)
+            sources = extract_sources(selected, metadata_by_document)
             context = label_context_sources(compress_context(selected, question, context_max_chars), sources)
             payload = {
                 "context": context, "sources": sources,
@@ -807,16 +1051,24 @@ def retrieve_context_with_sources(
 
     documents = results["documents"][0]
     distances = (results.get("distances") or [[]])[0]
+    metadatas = (results.get("metadatas") or [[]])[0]
+    if metadatas:
+        metadata_by_document.update({
+            document: metadata or {}
+            for document, metadata in zip(documents, metadatas)
+            if isinstance(document, str)
+        })
     vector_candidates = [
         (1 / (1 + max(distances[i] if i < len(distances) else 1.0, 0)), doc)
         for i, doc in enumerate(documents)
     ]
 
     merged = rrf_merge_candidates(vector_candidates, bm25_candidates, priority_chunks)
+    merged = _apply_section_boost(merged, metadata_by_document, target_sections)
     ranked, reranked = rerank_candidates(question, merged)
     selected = list(dict.fromkeys(doc for _, doc in sorted(ranked, reverse=True)))[:n_results]
 
-    sources = extract_sources(selected)
+    sources = extract_sources(selected, metadata_by_document)
     context = label_context_sources(compress_context(selected, question, context_max_chars), sources)
     top_score = sorted(ranked, reverse=True)[0][0] if ranked else 0.0
     keyword_hits = max((_keyword_score(question, d) for d in selected), default=0.0)
@@ -837,6 +1089,7 @@ def retrieve_context_with_sources(
         "reranked": reranked,
         "vector_candidates": len(vector_candidates),
         "bm25_candidates": len(bm25_candidates),
+        "section_targets": sorted(target_sections),
     }
     store_cached_retrieval(cache_key, payload)
     return payload

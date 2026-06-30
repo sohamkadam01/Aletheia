@@ -291,6 +291,16 @@ def _years_required(value) -> int:
             return int(value.get("years_number") or 0)
         except (TypeError, ValueError):
             return 0
+    try:
+        if isinstance(value, (int, float)):
+            return int(value)
+        if isinstance(value, str):
+            import re
+            m = re.search(r'\b(\d+)\+?\s*(?:years?|yrs?)\b', value.lower())
+            if m: return int(m.group(1))
+            if value.isdigit(): return int(value)
+    except (TypeError, ValueError):
+        pass
     return 0
 
 
@@ -744,6 +754,16 @@ def _role_fit_matrix(struct_a: dict, struct_b: dict, resume_is_a: bool = True) -
             extra_quality,
         ))
 
+    EDUCATION_LEVELS = {
+        "high school": 1, "high school diploma": 1, "ged": 1,
+        "diploma": 2, "associate": 3, "associates": 3,
+        "bachelor": 4, "bachelors": 4, "b.tech": 4, "btech": 4, "b.e": 4, "be": 4,
+        "b.sc": 4, "bsc": 4, "b.a": 4, "ba": 4, "degree": 4, "engineering": 4, "computer science": 4,
+        "master": 5, "masters": 5, "m.tech": 5, "mtech": 5, "m.e": 5, "me": 5,
+        "m.sc": 5, "msc": 5, "m.a": 5, "ma": 5, "mba": 5,
+        "phd": 6, "doctorate": 6
+    }
+
     for dimension, resume_key, job_key in (
         ("Education vs Required Education", "education", "required_education"),
         ("Certifications vs Required Certifications", "certifications", "required_certifications"),
@@ -756,18 +776,49 @@ def _role_fit_matrix(struct_a: dict, struct_b: dict, resume_is_a: bool = True) -
         for requirement in sorted(job_values):
             display = _display_requirement(requirement)
             is_match = requirement in resume_values
-            rows.append(row(
-                f"{singular} Requirement: {display}",
-                resume_key,
-                job_key,
-                _matching_display(resume.get(resume_key), {requirement}) if is_match else "",
-                f"{display} required in job description",
-                "Match" if is_match else missing_resume_status,
-                1.0 if is_match else 0.0,
-                f"The resume satisfies this {singular.lower()} requirement." if is_match else f"The job description requires this {singular.lower()} item, but it is not visible in the resume.",
-                "positive" if is_match else "negative",
-                "Perfect" if is_match else "Missing",
-            ))
+            exceeds = False
+            
+            if resume_key == "education" and not is_match:
+                req_level = EDUCATION_LEVELS.get(requirement, 0)
+                if req_level > 0:
+                    for res_edu in resume_values:
+                        res_level = EDUCATION_LEVELS.get(res_edu, 0)
+                        if res_level > req_level:
+                            exceeds = True
+                            break
+                    if exceeds:
+                        is_match = True
+
+            if exceeds:
+                if requirement not in matched:
+                    matched.append(requirement)
+                if requirement in missing:
+                    missing.remove(requirement)
+                rows.append(row(
+                    f"{singular} Requirement: {display}",
+                    resume_key,
+                    job_key,
+                    _list_text(resume.get(resume_key)),
+                    f"{display} required in job description",
+                    "Match",
+                    1.0,
+                    f"The candidate's education exceeds the {display} requirement.",
+                    "positive",
+                    "Perfect",
+                ))
+            else:
+                rows.append(row(
+                    f"{singular} Requirement: {display}",
+                    resume_key,
+                    job_key,
+                    _matching_display(resume.get(resume_key), {requirement}) if is_match else "",
+                    f"{display} required in job description",
+                    "Match" if is_match else missing_resume_status,
+                    1.0 if is_match else 0.0,
+                    f"The resume satisfies this {singular.lower()} requirement." if is_match else f"The job description requires this {singular.lower()} item, but it is not visible in the resume.",
+                    "positive" if is_match else "negative",
+                    "Perfect" if is_match else "Missing",
+                ))
         if job_values:
             ratio = len(matched) / max(1, len(job_values))
             if ratio >= 0.75:

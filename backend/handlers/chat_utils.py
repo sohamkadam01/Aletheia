@@ -31,7 +31,7 @@ def mode_scoped_conversation_memory(memory: Optional[dict], document_mode: str) 
     turns = memory.get("turns") or []
     scoped["turns"] = [
         turn for turn in turns
-        if isinstance(turn, dict) and turn.get("document_mode") == document_mode
+        if isinstance(turn, dict) and turn.get("mode", turn.get("document_mode")) == document_mode
     ]
 
     if document_mode == "website":

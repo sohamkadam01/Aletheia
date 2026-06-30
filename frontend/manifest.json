@@ -3,7 +3,7 @@
   "name": "Website Context Chatbot",
   "version": "1.0",
   "description": "Chat with any website using AI and RAG (BGE-M3 + OpenRouter/Ollama).",
-  "permissions": ["activeTab", "scripting"],
+  "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
     "http://localhost:8000/*",
     "http://127.0.0.1:8000/*"

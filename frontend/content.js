@@ -11,16 +11,20 @@
     // Create container for the widget
     const container = document.createElement('div');
     container.id = 'web-chatbot-container';
-    // Load theme preference
-    const savedTheme = localStorage.getItem('web-chatbot-theme') || 'light';
-    if (savedTheme === 'dark') container.classList.add('dark-mode');
+    // Load theme preference: respect manual override if set, otherwise follow system theme
+    const savedTheme = localStorage.getItem('web-chatbot-theme');
+    const systemPrefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const initialIsDark = savedTheme ? savedTheme === 'dark' : systemPrefersDark;
+    if (initialIsDark) container.classList.add('dark-mode');
     document.body.appendChild(container);
 
     // Inject HTML Structure
     container.innerHTML = `
-        <div id="web-chatbot-trigger" title="Chat with this page">
-            <svg id="cb-trigger-icon" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        <div id="web-chatbot-trigger" title="Chat with Aletheia">
+            <svg id="cb-trigger-icon" viewBox="0 0 32 32" width="30" height="30" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="16" cy="16" r="15" fill="none" stroke="currentColor" stroke-width="1.3" opacity="0.35"></circle>
+                <path d="M16 6.5 L23.5 24.5 L19.7 24.5 L17.85 19.8 L14.15 19.8 L12.3 24.5 L8.5 24.5 Z M16 11.3 L14.85 16.4 L17.15 16.4 Z" fill="currentColor"></path>
+                <circle cx="16" cy="16" r="3.1" fill="none" stroke="currentColor" stroke-width="1.4" opacity="0.9"></circle>
             </svg>
             <span id="cb-trigger-label" aria-hidden="true">
                 <span>Ask</span>
@@ -32,10 +36,29 @@
             <!-- Header -->
             <div id="web-chatbot-header">
                 <div class="cb-header-avatar">
-                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    <svg viewBox="0 0 100 100" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+                      <defs>
+                        <linearGradient id="a_grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stop-color="#00aaff" />
+                          <stop offset="100%" stop-color="#000088" />
+                        </linearGradient>
+                      </defs>
+                      <path d="M50 15 L15 85 L85 85 Z" fill="none" stroke="url(#a_grad)" stroke-width="4" stroke-linejoin="round"/>
+                      <path d="M35 60 L65 60" fill="none" stroke="url(#a_grad)" stroke-width="4" stroke-linecap="round"/>
+                      <path d="M15 85 L50 85 M50 15 L50 85" fill="none" stroke="url(#a_grad)" stroke-width="2" opacity="0.5"/>
+                      <circle cx="50" cy="15" r="5" fill="#00aaff"/>
+                      <circle cx="15" cy="85" r="5" fill="#000088"/>
+                      <circle cx="85" cy="85" r="5" fill="#000088"/>
+                      <circle cx="35" cy="60" r="5" fill="#0066cc"/>
+                      <circle cx="65" cy="60" r="5" fill="#0066cc"/>
+                      <circle cx="50" cy="85" r="5" fill="#000088"/>
+                      <circle cx="32.5" cy="42.5" r="5" fill="#0088dd"/>
+                      <circle cx="67.5" cy="42.5" r="5" fill="#0088dd"/>
+                      <polygon points="50,40 52.5,47 60,47 54,51.5 56.5,58.5 50,54 43.5,58.5 46,51.5 40,47 47.5,47" fill="url(#a_grad)"/>
+                    </svg>
                 </div>
                 <div class="cb-header-info">
-                    <div class="cb-header-title">Page Assistant</div>
+                    <div class="cb-header-title">CHATBOT ALETHEIA</div>
                     <div class="cb-header-sub hidden" aria-hidden="true">
                         <span class="status-dot" id="web-chatbot-status-dot"></span>
                         <span id="web-chatbot-status-text"></span>
@@ -46,7 +69,7 @@
                     <span id="web-chatbot-safety-text">Safe</span>
                 </div>
                 <div class="header-actions">
-                    <button id="web-chatbot-theme-toggle" class="hidden" title="Toggle dark mode" aria-hidden="true" tabindex="-1">
+                    <button id="web-chatbot-theme-toggle" title="Toggle dark mode">
                         <svg id="theme-icon-sun" class="hidden" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
                         <svg id="theme-icon-moon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
                     </button>
@@ -192,10 +215,35 @@
                 </div>
             </div>
             <div id="web-chatbot-settings-panel" class="hidden">
-                <label>Pages to crawl <input id="web-chatbot-crawl-limit" type="number" min="1" max="25" value="10"></label>
-                <label><span>Auto-index on open</span> <input id="web-chatbot-auto-index" type="checkbox" checked></label>
-                <label><span>Concise answers</span> <input id="web-chatbot-concise" type="checkbox"></label>
-                <button id="web-chatbot-clear">Clear Chat History</button>
+                <div class="settings-tabs">
+                    <button id="settings-tab-general" class="settings-tab active" type="button">General</button>
+                    <button id="settings-tab-ai" class="settings-tab" type="button">AI Settings</button>
+                    <button id="settings-tab-profile" class="settings-tab" type="button">Profile</button>
+                </div>
+                <div id="settings-content-general" class="settings-content">
+                    <label>Pages to crawl <input id="web-chatbot-crawl-limit" type="number" min="1" max="25" value="10"></label>
+                    <label><span>Auto-index on open</span> <input id="web-chatbot-auto-index" type="checkbox" checked></label>
+                    <button id="web-chatbot-clear">Clear Chat History</button>
+                </div>
+                <div id="settings-content-ai" class="settings-content hidden">
+                    <label><span>Concise answers</span> <input id="web-chatbot-concise" type="checkbox"></label>
+                </div>
+                <div id="settings-content-profile" class="settings-content hidden">
+                    <div class="user-profile-fields">
+                        <label class="profile-field-row">Full Name <input id="profile-full-name" type="text" placeholder="John Doe"></label>
+                        <label class="profile-field-row">Email <input id="profile-email" type="email" placeholder="john@example.com"></label>
+                        <label class="profile-field-row">Phone <input id="profile-phone" type="tel" placeholder="+1234567890"></label>
+                        <label class="profile-field-row">Address <input id="profile-address" type="text" placeholder="123 Main St"></label>
+                        <label class="profile-field-row">City <input id="profile-city" type="text" placeholder="City"></label>
+                        <label class="profile-field-row">State <input id="profile-state" type="text" placeholder="State"></label>
+                        <label class="profile-field-row">Country <input id="profile-country" type="text" placeholder="Country"></label>
+                        <label class="profile-field-row">DOB <input id="profile-dob" type="date"></label>
+                        <label class="profile-field-row">LinkedIn <input id="profile-linkedin" type="url" placeholder="https://linkedin.com/in/..."></label>
+                        <label class="profile-field-row">Portfolio <input id="profile-portfolio" type="url" placeholder="https://..."></label>
+                        <label class="profile-field-row profile-field-row-full">Custom Fields <textarea id="profile-custom-fields" rows="3" placeholder="github: https://github.com/you&#10;work_authorization: Yes"></textarea></label>
+                    </div>
+                    <div id="profile-save-status" class="profile-save-status" aria-live="polite"></div>
+                </div>
             </div>
             <div id="web-chatbot-messages">
                 <div class="message bot">Ready. Ask me anything about this page, or attach a document to compare.</div>
@@ -232,6 +280,7 @@
                     </svg>
                 </button>
             </div>
+            <p class="cb-disclaimer">Aletheia can make mistakes. Verify important information.</p>
         </div>
     `;
 
@@ -293,6 +342,22 @@
     const statusText = document.getElementById('web-chatbot-status-text');
     const safetyPill = document.getElementById('web-chatbot-safety-pill');
     const safetyText = document.getElementById('web-chatbot-safety-text');
+    const settingsTabs = Array.from(document.querySelectorAll('#web-chatbot-settings-panel .settings-tab'));
+    const settingsContents = Array.from(document.querySelectorAll('#web-chatbot-settings-panel .settings-content'));
+    const profileSaveStatus = document.getElementById('profile-save-status');
+    const profileFields = {
+        full_name: document.getElementById('profile-full-name'),
+        email: document.getElementById('profile-email'),
+        phone: document.getElementById('profile-phone'),
+        address: document.getElementById('profile-address'),
+        city: document.getElementById('profile-city'),
+        state: document.getElementById('profile-state'),
+        country: document.getElementById('profile-country'),
+        dob: document.getElementById('profile-dob'),
+        linkedin: document.getElementById('profile-linkedin'),
+        portfolio: document.getElementById('profile-portfolio')
+    };
+    const profileCustomFieldsInput = document.getElementById('profile-custom-fields');
 
     let indexedContentHash = '';
     let siteContentHash = '';
@@ -313,6 +378,7 @@
     let latestContentHash = '';
     let indexingPromise = null;
     let requestSerial = 0;
+    let activeResponseMessage = null;
     let stoppedSerial = 0;
     let activeBackendRequestId = '';
     let backgroundIndexStarted = false;
@@ -323,6 +389,7 @@
     const INDEX_SCHEMA_VERSION = 'visible-content-v3';
     const chatStorageKey = `web-chatbot-history:${window.location.origin}${window.location.pathname}`;
     const settingsStorageKey = 'web-chatbot-settings';
+    const userProfileStorageKey = 'web-chatbot-user-profile';
     // Conversation history for adaptive learning (persisted per origin)
     const historyKey = `web-chatbot-conv:${window.location.origin}`;
     const memoryKey = `web-chatbot-memory:${window.location.origin}`;
@@ -358,6 +425,22 @@
         localStorage.setItem('web-chatbot-theme', container.classList.contains('dark-mode') ? 'dark' : 'light');
         updateThemeIcons();
     };
+
+    // Auto-switch theme when the OS/browser theme changes (e.g. day -> night),
+    // but only if the user has not manually chosen a theme via the toggle above.
+    if (window.matchMedia) {
+        const systemThemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        const handleSystemThemeChange = (event) => {
+            if (localStorage.getItem('web-chatbot-theme')) return; // manual override in place
+            container.classList.toggle('dark-mode', event.matches);
+            updateThemeIcons();
+        };
+        if (systemThemeQuery.addEventListener) {
+            systemThemeQuery.addEventListener('change', handleSystemThemeChange);
+        } else if (systemThemeQuery.addListener) {
+            systemThemeQuery.addListener(handleSystemThemeChange);
+        }
+    }
 
     const checkWebsiteSafety = async () => {
         if (safetyVerified) return true;
@@ -589,6 +672,18 @@
         return overlapRatio >= 0.2; // at least 20% of nodes have a word in the page
     };
 
+    const stripEmojis = (str) => {
+        if (!str) return '';
+        try {
+            return str.replace(/[\u2600-\u27BF]|[\u{1F300}-\u{1F6FF}]|[\u{1F900}-\u{1F9FF}]/gu, '')
+                      .replace(/[\p{Extended_Pictographic}\p{Emoji_Component}\p{Emoji_Presentation}\p{Emoji_Modifier}\p{Emoji_Modifier_Base}]/gu, '')
+                      .replace(/\s+/g, ' ')
+                      .trim();
+        } catch (e) {
+            return str.replace(/[\u2600-\u27BF]|[\u{1F300}-\u{1F6FF}]/gu, '').replace(/\s+/g, ' ').trim();
+        }
+    };
+
     const parseReactFlowJson = (code) => {
         try {
             const parsed = JSON.parse(String(code || '').trim());
@@ -600,15 +695,15 @@
             const nodes = rawNodes
                 .map((node, index) => {
                     const id = String(node.id || `node_${index + 1}`).replace(/[^A-Za-z0-9_-]/g, '_');
-                    const label = String(node.label || node.data?.label || '').replace(/\s+/g, ' ').trim();
+                    const label = stripEmojis(String(node.label || node.data?.label || '').replace(/\s+/g, ' ').trim());
                     if (!id || !label || /^[A-Z]$/i.test(label)) return null;
                     nodeIds.add(id);
                     return {
                         id,
                         label,
-                        description: String(node.description || node.data?.description || '').replace(/\s+/g, ' ').trim(),
+                        description: stripEmojis(String(node.description || node.data?.description || '').replace(/\s+/g, ' ').trim()),
                         type: normalizeFlowNodeType(node.type),
-                        phase: String(node.phase || node.data?.phase || '').replace(/\s+/g, ' ').trim()
+                        phase: stripEmojis(String(node.phase || node.data?.phase || '').replace(/\s+/g, ' ').trim())
                     };
                 })
                 .filter(Boolean)
@@ -619,7 +714,7 @@
                 .map((edge) => ({
                     from: String(edge.source || edge.from || '').replace(/[^A-Za-z0-9_-]/g, '_'),
                     to: String(edge.target || edge.to || '').replace(/[^A-Za-z0-9_-]/g, '_'),
-                    label: String(edge.label || edge.data?.label || '').replace(/\s+/g, ' ').trim()
+                    label: stripEmojis(String(edge.label || edge.data?.label || '').replace(/\s+/g, ' ').trim())
                 }))
                 .filter((edge) => validIds.has(edge.from) && validIds.has(edge.to) && edge.from !== edge.to)
                 .slice(0, 36);
@@ -632,14 +727,6 @@
                 nodes,
                 edges
             };
-            if (hasGenericFlowchartTemplate(diagram)) return null;
-            // Cross-check node labels against actual page content
-            // latestContent is the live extracted page text available in this closure
-            const pageText = typeof latestContent === 'string' ? latestContent : '';
-            if (pageText && !isFlowchartGrounded(diagram, pageText)) {
-                console.warn('Flowchart rejected: node labels do not overlap with page content.');
-                return null;
-            }
             return { ...diagram };
         } catch (error) {
             return null;
@@ -716,12 +803,14 @@
         const phaseMap = new Map();
         diagram.nodes.forEach((node) => {
             if (!node.phase) return;
-            if (!phaseMap.has(node.phase)) {
-                const group = { label: node.phase, ids: [] };
-                phaseMap.set(node.phase, group);
+            const phaseLabel = stripEmojis(node.phase);
+            if (!phaseLabel) return;
+            if (!phaseMap.has(phaseLabel)) {
+                const group = { label: phaseLabel, ids: [] };
+                phaseMap.set(phaseLabel, group);
                 phases.push(group);
             }
-            phaseMap.get(node.phase).ids.push(node.id);
+            phaseMap.get(phaseLabel).ids.push(node.id);
         });
 
         const subgraphSvg = phases.map((phase) => {
@@ -1057,10 +1146,22 @@
             .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
             .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
 
+        // Parse markdown-style links [text](url) — always enabled since they are explicit
+        html = html.replace(
+            /\[([^\]]+)\]\((https?:\/\/[^)\s]+|mailto:[^)\s]+|tel:[^)\s]+)\)/g,
+            (_, linkText, url) => `<a href="${escapeAttribute(url)}" target="_blank" rel="noopener noreferrer" title="${escapeAttribute(url)}">${linkText}</a>`
+        );
+
         if (options.linkify) {
+            // Auto-linkify bare URLs that are NOT already inside an <a> tag
             html = html.replace(
                 /(https?:\/\/[^\s<]+|mailto:[^\s<]+|tel:[^\s<]+)/g,
-                (match) => `<a href="${escapeAttribute(match)}" target="_blank" rel="noopener noreferrer" title="${escapeAttribute(match)}">${escapeHtml(shortDisplayUrl(match))}</a>`
+                (match, _url, offset) => {
+                    // Check if this URL is already inside an href="..." or >...</a>
+                    const before = html.slice(Math.max(0, offset - 200), offset);
+                    if (/href=["'][^"']*$/.test(before) || /<a\s[^>]*>[^<]*$/.test(before)) return match;
+                    return `<a href="${escapeAttribute(match)}" target="_blank" rel="noopener noreferrer" title="${escapeAttribute(match)}">${escapeHtml(shortDisplayUrl(match))}</a>`;
+                }
             );
         }
 
@@ -1082,13 +1183,24 @@
         const tableClass = header.some((cell) => ['Impact', 'Source A', 'Source B', 'Reason'].includes(cell))
             ? 'message-table-wrap compare-result-table-wrap'
             : 'message-table-wrap';
-        const bodyRows = rows.slice(isTableSeparator(rows[1]) ? 2 : 1).map(splitTableRow);
+        const allBodyRows = rows.slice(isTableSeparator(rows[1]) ? 2 : 1).map(splitTableRow).filter(row => row.length);
+        const MAX_DISPLAY_ROWS = 5;
+        const isTruncated = allBodyRows.length > MAX_DISPLAY_ROWS;
+        const displayRows = isTruncated ? allBodyRows.slice(0, MAX_DISPLAY_ROWS) : allBodyRows;
+
         const headerHtml = header.map((cell) => `<th>${formatInlineBotText(cell, options)}</th>`).join('');
-        const bodyHtml = bodyRows
-            .filter((row) => row.length)
+        const getBodyHtml = (rws) => rws
             .map((row) => `<tr>${header.map((_, index) => `<td>${formatInlineBotText(row[index] || '', options)}</td>`).join('')}</tr>`)
             .join('');
-        return `<div class="${tableClass}"><table><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table></div>`;
+
+        let html = `<div class="${tableClass}${isTruncated ? ' is-truncated' : ''}" role="button" tabindex="0" aria-label="Open table preview" title="Open table preview">`;
+        html += `<table><thead><tr>${headerHtml}</tr></thead><tbody>${getBodyHtml(displayRows)}</tbody></table>`;
+        if (isTruncated) {
+            html += `<div class="table-truncate-hint">Showing ${MAX_DISPLAY_ROWS} of ${allBodyRows.length} rows. Click to see all.</div>`;
+            html += `<table class="full-table-source hidden" style="display:none" aria-hidden="true"><thead><tr>${headerHtml}</tr></thead><tbody>${getBodyHtml(allBodyRows)}</tbody></table>`;
+        }
+        html += `</div>`;
+        return html;
     };
 
     const parseChartJson = (text) => {
@@ -1221,6 +1333,7 @@
         const lines = String(segment || '').replace(/\r\n/g, '\n').split('\n');
         const blocks = [];
         let index = 0;
+        let inSection = false;
 
         while (index < lines.length) {
             const line = lines[index].trim();
@@ -1232,6 +1345,14 @@
             const heading = line.match(/^(#{1,4})\s+(.+)$/);
             if (heading) {
                 const headingDepth = heading[1].length;
+                if (options.isDeepSearch && headingDepth <= 3) {
+                    if (inSection) {
+                        blocks.push('</div>');
+                    }
+                    blocks.push('<div class="deep-search-section">');
+                    inSection = true;
+                }
+
                 const tag = headingDepth <= 2 ? 'h3' : 'h4';
                 const className = headingDepth <= 2 ? 'message-heading message-heading-title' : 'message-heading message-heading-section';
                 blocks.push(`<${tag} class="${className}">${formatInlineBotText(heading[2], options)}</${tag}>`);
@@ -1283,13 +1404,374 @@
             blocks.push(`<p>${formatInlineBotText(paragraph.join(' '), options)}</p>`);
         }
 
+        if (inSection) {
+            blocks.push('</div>');
+        }
+
         return blocks.join('');
     };
 
+    const parseWorkflowSteps = (text) => {
+        const lines = String(text || '').split('\n');
+        const steps = [];
+        let metadata = {
+            steps: 0,
+            required_documents: 0,
+            confidence: 'Low'
+        };
+        let currentStep = null;
+        let beforeWorkflow = [];
+        let afterWorkflow = [];
+        let inWorkflow = false;
+        let seenWorkflowHeading = false;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmed = line.trim();
+
+            if (/^(#{2,3})\s+Workflow\b/i.test(trimmed)) {
+                seenWorkflowHeading = true;
+                inWorkflow = true;
+                continue;
+            }
+
+            if (!seenWorkflowHeading) {
+                beforeWorkflow.push(line);
+                continue;
+            }
+
+            if (inWorkflow) {
+                if (/^(#{2,3})\s+(Key Requirements|Requirements|Forms|Links|Gaps|Follow-up|Sources)\b/i.test(trimmed)) {
+                    inWorkflow = false;
+                    afterWorkflow.push(line);
+                    continue;
+                }
+
+                if (trimmed.startsWith('Steps:')) {
+                    metadata.steps = parseInt(trimmed.replace('Steps:', '').trim(), 10) || 0;
+                    continue;
+                }
+                if (trimmed.startsWith('Required Documents:')) {
+                    metadata.required_documents = parseInt(trimmed.replace('Required Documents:', '').trim(), 10) || 0;
+                    continue;
+                }
+                if (trimmed.startsWith('Confidence:')) {
+                    metadata.confidence = trimmed.replace('Confidence:', '').trim();
+                    continue;
+                }
+                if (trimmed.startsWith('Workflow Summary')) {
+                    continue;
+                }
+
+                const stepMatch = trimmed.match(/^(\d+)[.)]\s+(.+)$/);
+                if (stepMatch) {
+                    const num = stepMatch[1];
+                    const content = stepMatch[2];
+                    const titleClean = content.replace(/^\*\*([^*]+)\*\*/, '$1').trim();
+                    currentStep = {
+                        number: num,
+                        title: titleClean,
+                        requirement: '',
+                        dependency: '',
+                        fee: '',
+                        deadline: '',
+                        branch: '',
+                        source: '',
+                        detail: ''
+                    };
+                    steps.push(currentStep);
+                    continue;
+                }
+
+                if (currentStep && trimmed.startsWith('-')) {
+                    const subtrimmed = trimmed.replace(/^-\s*/, '').trim();
+                    const colonIdx = subtrimmed.indexOf(':');
+                    if (colonIdx !== -1) {
+                        const key = subtrimmed.slice(0, colonIdx).toLowerCase().trim();
+                        const val = subtrimmed.slice(colonIdx + 1).trim();
+
+                        if (key === 'requirement') {
+                            currentStep.requirement = val;
+                        } else if (key === 'dependency') {
+                            currentStep.dependency = val;
+                        } else if (key === 'fee') {
+                            currentStep.fee = val;
+                        } else if (key === 'deadline') {
+                            currentStep.deadline = val;
+                        } else if (key === 'branch') {
+                            currentStep.branch = val;
+                        } else if (key === 'source') {
+                            currentStep.source = val;
+                        } else if (key === 'detail' || key === 'details') {
+                            currentStep.detail = val;
+                        }
+                    }
+                    continue;
+                }
+            } else {
+                afterWorkflow.push(line);
+            }
+        }
+
+        return {
+            before: beforeWorkflow.join('\n'),
+            metadata,
+            steps,
+            after: afterWorkflow.join('\n')
+        };
+    };
+
+    const renderInteractiveWorkflowContainerAndSteps = (parsed, options = {}) => {
+        const linkifyOpts = { ...options, linkify: true };
+        const metadata = parsed.metadata;
+        const steps = parsed.steps;
+
+        let html = `
+            <div class="workflow-container">
+                <div class="workflow-summary">
+                    <div class="workflow-metadata">
+                        <div class="workflow-metadata-item">
+                            <span class="workflow-metadata-label">Steps</span>
+                            <span class="workflow-metadata-value">${steps.length}</span>
+                        </div>
+                        <div class="workflow-metadata-item">
+                            <span class="workflow-metadata-label">Required Docs</span>
+                            <span class="workflow-metadata-value">${metadata.required_documents || 0}</span>
+                        </div>
+                        <div class="workflow-metadata-item">
+                            <span class="workflow-metadata-label">Confidence</span>
+                            <span class="workflow-metadata-value workflow-confidence-${(metadata.confidence || 'low').toLowerCase()}">${escapeHtml(metadata.confidence || 'Low')}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="workflow-steps">
+        `;
+
+        steps.forEach((step, index) => {
+            const isCollapsed = index > 0;
+            
+            let sourceHtml = '';
+            if (step.source) {
+                const isUrl = /^(https?:\/\/|mailto:|tel:)/i.test(step.source);
+                if (isUrl) {
+                    sourceHtml = `<a class="workflow-step-source-link" href="${escapeAttribute(step.source)}" target="_blank" rel="noopener noreferrer" title="${escapeAttribute(step.source)}"><svg class="workflow-icon-link" viewBox="0 0 16 16" width="12" height="12"><path fill="currentColor" d="M7.775 3.275a.75.75 0 0 0-1.06 1.06l1.25 1.25a2 2 0 1 1-2.83 2.83l-2.5-2.5a2 2 0 0 1 0-2.83.75.75 0 0 0-1.06-1.06 3.5 3.5 0 0 0 0 4.95l2.5 2.5a3.5 3.5 0 0 0 4.95 0l1.25-1.25a.75.75 0 0 0 0-1.06zm-1.72 8a.75.75 0 0 0 1.06-1.06l-1.25-1.25a2 2 0 1 1 2.83-2.83l2.5 2.5a2 2 0 0 1 0 2.83.75.75 0 0 0 1.06 1.06 3.5 3.5 0 0 0 0-4.95l-2.5-2.5a3.5 3.5 0 0 0-4.95 0l-1.25 1.25a.75.75 0 0 0 0 1.06z"/></svg> Source</a>`;
+                } else {
+                    sourceHtml = `<span class="workflow-step-source-text"><svg class="workflow-icon-doc" viewBox="0 0 16 16" width="12" height="12"><path fill="currentColor" d="M4 1.75C4 .784 4.784 0 5.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 14.25 16h-8.5A1.75 1.75 0 0 1 4 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25V5.5h-2.75A1.75 1.75 0 0 1 10 3.75V1.5Zm5 0v2.25c0 .138.112.25.25.25h2.25L10.75 1.5Z"/></svg> ${escapeHtml(step.source)}</span>`;
+                }
+            }
+
+            html += `
+                <div class="workflow-step-card ${isCollapsed ? 'collapsed' : ''}">
+                    <div class="workflow-step-header" tabIndex="0" role="button" aria-expanded="${!isCollapsed}" onclick="this.parentElement.classList.toggle('collapsed'); this.setAttribute('aria-expanded', !this.parentElement.classList.contains('collapsed'));">
+                        <div class="workflow-step-badge">${step.number}</div>
+                        <div class="workflow-step-title">${formatInlineBotText(step.title, linkifyOpts)}</div>
+                        <span class="workflow-step-chevron">
+                            <svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M4.47 5.22a.75.75 0 0 1 1.06 0L8 7.69l2.47-2.47a.75.75 0 0 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 0-1.06z"/></svg>
+                        </span>
+                    </div>
+                    <div class="workflow-step-body">
+                        <div class="workflow-step-body-content">
+                            ${step.detail ? `<p class="workflow-step-detail-text">${formatInlineBotText(step.detail, linkifyOpts)}</p>` : ''}
+                            <div class="workflow-badges-grid">
+                                ${step.dependency ? `<div class="workflow-badge-row"><span class="workflow-badge-label workflow-badge-dependency">Dependency</span> <span class="workflow-badge-val">${formatInlineBotText(step.dependency, linkifyOpts)}</span></div>` : ''}
+                                ${step.requirement ? `<div class="workflow-badge-row"><span class="workflow-badge-label workflow-badge-requirement">Requirement</span> <span class="workflow-badge-val">${formatInlineBotText(step.requirement, linkifyOpts)}</span></div>` : ''}
+                                ${step.fee ? `<div class="workflow-badge-row"><span class="workflow-badge-label workflow-badge-fee">Fee</span> <span class="workflow-badge-val">${formatInlineBotText(step.fee, linkifyOpts)}</span></div>` : ''}
+                                ${step.deadline ? `<div class="workflow-badge-row"><span class="workflow-badge-label workflow-badge-deadline">Deadline</span> <span class="workflow-badge-val">${formatInlineBotText(step.deadline, linkifyOpts)}</span></div>` : ''}
+                                ${step.branch ? `<div class="workflow-badge-row"><span class="workflow-badge-label workflow-badge-branch">Branch</span> <span class="workflow-badge-val">${formatInlineBotText(step.branch, linkifyOpts)}</span></div>` : ''}
+                                ${sourceHtml ? `<div class="workflow-badge-row"><span class="workflow-badge-label workflow-badge-source">Source</span> <span class="workflow-badge-val">${sourceHtml}</span></div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+            </div>
+        `;
+
+        return html;
+    };
+
+    const parseActionExecutionBlocks = (text = '') => {
+        const actions = [];
+        const allowedTypes = new Set(['fill', 'select', 'check', 'uncheck']);
+        const pattern = /```action-execution\s*([\s\S]*?)```/gi;
+        let cleaned = String(text || '');
+        let match;
+        while ((match = pattern.exec(text || '')) !== null) {
+            try {
+                const parsed = JSON.parse(match[1].trim());
+                if (Array.isArray(parsed.actions)) {
+                    actions.push(...parsed.actions.filter((action) => action && allowedTypes.has(String(action.type || '').toLowerCase())));
+                }
+                cleaned = cleaned.replace(match[0], '').trim();
+            } catch (error) {
+                console.warn('Invalid action-execution block:', error);
+            }
+        }
+        return { cleaned, actions };
+    };
+
+    const confidenceClass = (confidence) => {
+        const value = Number(confidence) || 0;
+        if (value >= 0.9) return 'high';
+        if (value >= 0.7) return 'medium';
+        return 'low';
+    };
+
+    const AUTOFILL_LOW_CONFIDENCE_THRESHOLD = 0.7;
+    const autofillSessionStorageKey = `web-chatbot-autofill-session:${window.location.origin}`;
+
+    const isSensitiveAutofillTarget = (value = '') => /\b(password|passcode|pin|otp|one[-\s]?time|verification|security code|cvv|cvc|card number|credit card|debit card|bank|routing|account number|ssn|social security|tax id|passport|driver'?s license|license number|secret|token)\b/i.test(String(value || ''));
+
+    const analyzeAutofillActionRisk = (action = {}) => {
+        const confidence = Number(action.confidence || 0);
+        const sensitive = isSensitiveAutofillTarget([
+            action.field,
+            action.label,
+            action.placeholder,
+            action.profile_key,
+            action.type
+        ].join(' '));
+        return {
+            confidence,
+            confidenceKey: confidenceClass(confidence),
+            lowConfidence: confidence > 0 && confidence < AUTOFILL_LOW_CONFIDENCE_THRESHOLD,
+            sensitive,
+            blocked: sensitive
+        };
+    };
+
+    const summarizeAutofillRisk = (actions = []) => {
+        const risks = actions.map(analyzeAutofillActionRisk);
+        return {
+            total: actions.length,
+            sensitive: risks.filter((risk) => risk.sensitive).length,
+            lowConfidence: risks.filter((risk) => risk.lowConfidence).length,
+            blocked: risks.filter((risk) => risk.blocked).length,
+            editable: actions.length
+        };
+    };
+
+    const saveAutofillSession = (actions = [], phase = 'review') => {
+        try {
+            sessionStorage.setItem(autofillSessionStorageKey, JSON.stringify({
+                url: window.location.href,
+                origin: window.location.origin,
+                title: document.title || '',
+                phase,
+                actions,
+                updated_at: Date.now()
+            }));
+        } catch (error) {
+            console.warn('Unable to save autofill session:', error);
+        }
+    };
+
+    const loadAutofillSession = () => {
+        try {
+            const session = JSON.parse(sessionStorage.getItem(autofillSessionStorageKey) || 'null');
+            if (!session || Date.now() - Number(session.updated_at || 0) > 60 * 60 * 1000) return null;
+            return session;
+        } catch (error) {
+            return null;
+        }
+    };
+
+    const appendActionConsentCard = (messageEl, actions = []) => {
+        if (!messageEl || !actions.length) return;
+        const card = document.createElement('div');
+        card.className = 'action-consent-card';
+        const riskSummary = summarizeAutofillRisk(actions);
+        const rows = actions.map((action, index) => {
+            const confidence = Number(action.confidence || 0);
+            const confidenceLabel = confidence ? `${Math.round(confidence * 100)}%` : 'Review';
+            const risk = analyzeAutofillActionRisk(action);
+            const disabled = risk.blocked ? 'disabled' : '';
+            const checked = risk.blocked || risk.lowConfidence ? '' : 'checked';
+            const rowNote = risk.blocked
+                ? 'Sensitive field blocked'
+                : risk.lowConfidence
+                ? 'Low confidence requires review'
+                : 'Ready';
+            return `
+                <div class="action-row ${risk.blocked ? 'action-row-blocked' : ''} ${risk.lowConfidence ? 'action-row-low' : ''}" data-action-index="${index}">
+                    <label class="action-include">
+                        <input type="checkbox" class="action-include-input" ${checked} ${disabled}>
+                        <span>${risk.blocked ? 'Blocked' : 'Use'}</span>
+                    </label>
+                    <label class="action-edit-field">
+                        <span>Field</span>
+                        <input class="action-field-input" value="${escapeAttribute(action.field || 'Field')}" ${disabled}>
+                    </label>
+                    <label class="action-edit-value">
+                        <span>Value</span>
+                        <input class="action-value-input" value="${escapeAttribute(action.type === 'check' ? 'true' : action.type === 'uncheck' ? 'false' : String(action.value ?? ''))}" ${disabled}>
+                    </label>
+                    <span class="action-confidence action-confidence-${risk.confidenceKey}">${confidenceLabel}</span>
+                    <span class="action-row-note">${escapeHtml(rowNote)}</span>
+                </div>
+            `;
+        }).join('');
+        card.innerHTML = `
+            <div class="action-card-header">
+                <strong>Form Autofill Plan</strong>
+                <span>${actions.length} action${actions.length === 1 ? '' : 's'}</span>
+            </div>
+            <div class="action-risk-summary">
+                <strong>Privacy and Risk</strong>
+                <span>${riskSummary.blocked} sensitive blocked</span>
+                <span>${riskSummary.lowConfidence} low confidence</span>
+                <span>Editable before approval</span>
+            </div>
+            <div class="action-table">${rows}</div>
+            <p class="action-preview-note">Preview highlights matched fields without filling them. Low-confidence rows stay off until you review and enable them.</p>
+            <details class="action-details">
+                <summary>Details</summary>
+                <pre>${escapeHtml(JSON.stringify({ actions }, null, 2))}</pre>
+            </details>
+            <div class="action-progress">
+                <span class="action-status">Review the fields before filling.</span>
+            </div>
+            <div class="action-buttons">
+                <button class="action-preview" type="button">Preview</button>
+                <button class="action-approve" type="button">Approve Autofill</button>
+                <button class="action-cancel" type="button">Cancel</button>
+            </div>
+        `;
+        card.dataset.originalActions = JSON.stringify(actions);
+        saveAutofillSession(actions, 'review');
+        card.querySelector('.action-preview').onclick = () => previewAutofillPlan(card);
+        card.querySelector('.action-approve').onclick = () => executeAutofillPlan(card);
+        card.querySelector('.action-cancel').onclick = () => {
+            card.classList.add('cancelled');
+            card.querySelector('.action-status').textContent = 'Autofill cancelled.';
+            card.querySelectorAll('button').forEach((button) => { button.disabled = true; });
+        };
+        messageEl.appendChild(card);
+    };
+
     const formatBotMessage = (text, options = {}) => {
+        const actionBlocks = parseActionExecutionBlocks(text);
+        text = actionBlocks.cleaned;
+
         const rawJsonFlowchart = parseReactFlowJson(text);
         if (rawJsonFlowchart) {
             return renderReactFlowJsonFlowchart(text);
+        }
+
+        if ((text || '').includes('### Workflow')) {
+            const parsed = parseWorkflowSteps(text);
+            if (parsed.steps.length > 0) {
+                const linkifyOpts = { ...options, linkify: true };
+                const beforeHtml = parsed.before.trim() ? formatBotMessage(parsed.before, linkifyOpts) : '';
+                const afterHtml = parsed.after.trim() ? formatBotMessage(parsed.after, linkifyOpts) : '';
+                const workflowHtml = renderInteractiveWorkflowContainerAndSteps(parsed, linkifyOpts);
+                return beforeHtml + workflowHtml + afterHtml;
+            }
         }
 
         const parts = [];
@@ -1335,6 +1817,48 @@
 
     const closeFlowDiagramModal = () => {
         document.getElementById('web-chatbot-flow-modal')?.remove();
+    };
+
+    const closeTableModal = () => {
+        document.getElementById('web-chatbot-table-modal')?.remove();
+    };
+
+    const openTableModal = (tableWrap) => {
+        closeTableModal();
+        // Use the full data source if the table was truncated in the chat message
+        const sourceTable = tableWrap.querySelector('.full-table-source') || tableWrap.querySelector('table');
+        if (!sourceTable) return;
+
+        const clonedTable = sourceTable.cloneNode(true);
+        const rowCount = clonedTable.querySelectorAll('tbody tr').length;
+        const columnCount = clonedTable.querySelectorAll('thead th').length || clonedTable.querySelectorAll('tr:first-child > *').length;
+        const isCompareTable = tableWrap.classList.contains('compare-result-table-wrap');
+
+        const modal = document.createElement('div');
+        modal.id = 'web-chatbot-table-modal';
+        modal.className = `table-modal${isCompareTable ? ' table-modal-compare' : ''}`;
+        modal.innerHTML = `
+            <div class="table-modal-panel" role="dialog" aria-modal="true" aria-label="Table preview">
+                <div class="table-modal-header">
+                    <div>
+                        <span>Data Table</span>
+                        <small>${rowCount} rows${columnCount ? `, ${columnCount} columns` : ''}</small>
+                    </div>
+                    <button type="button" class="table-modal-close" aria-label="Close table preview">Close</button>
+                </div>
+                <div class="table-modal-body"></div>
+            </div>
+        `;
+        modal.querySelector('.table-modal-body')?.appendChild(clonedTable);
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal || e.target.closest('.table-modal-close')) {
+                closeTableModal();
+            }
+        });
+
+        document.body.appendChild(modal);
+        modal.querySelector('.table-modal-close')?.focus();
     };
 
     const currentFlowDiagramPalette = () => {
@@ -1699,6 +2223,80 @@
         }));
     };
 
+    const parseCustomProfileFields = (value = '') => {
+        const fields = {};
+        String(value || '').split(/\r?\n/).forEach((line) => {
+            const match = line.match(/^\s*([^:=]+)\s*[:=]\s*(.+?)\s*$/);
+            if (!match) return;
+            const key = match[1].trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+            if (key) fields[key] = match[2].trim();
+        });
+        return fields;
+    };
+
+    const serializeCustomProfileFields = (fields = {}) => Object.entries(fields || {})
+        .filter(([key, value]) => key && value)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('\n');
+
+    const loadUserProfile = () => {
+        let profile = {};
+        try {
+            profile = JSON.parse(localStorage.getItem(userProfileStorageKey) || '{}');
+        } catch (error) {
+            profile = {};
+        }
+
+        Object.entries(profileFields).forEach(([key, element]) => {
+            if (element) element.value = profile[key] || '';
+        });
+        if (profileCustomFieldsInput) {
+            profileCustomFieldsInput.value = serializeCustomProfileFields(profile.custom_fields || {});
+        }
+        return profile;
+    };
+
+    const saveUserProfile = () => {
+        const profile = {};
+        Object.entries(profileFields).forEach(([key, element]) => {
+            profile[key] = (element?.value || '').trim();
+        });
+        profile.custom_fields = parseCustomProfileFields(profileCustomFieldsInput?.value || '');
+        localStorage.setItem(userProfileStorageKey, JSON.stringify(profile));
+        if (profileSaveStatus) {
+            profileSaveStatus.textContent = 'Saved locally';
+            window.clearTimeout(profileSaveStatus._clearTimer);
+            profileSaveStatus._clearTimer = window.setTimeout(() => {
+                profileSaveStatus.textContent = '';
+            }, 1400);
+        }
+        return profile;
+    };
+
+    const currentUserProfile = () => {
+        let profile = {};
+        try {
+            profile = JSON.parse(localStorage.getItem(userProfileStorageKey) || '{}');
+        } catch (error) {
+            profile = {};
+        }
+        return {
+            full_name: profile.full_name || '',
+            email: profile.email || '',
+            phone: profile.phone || '',
+            address: profile.address || '',
+            city: profile.city || '',
+            state: profile.state || '',
+            country: profile.country || '',
+            dob: profile.dob || '',
+            linkedin: profile.linkedin || '',
+            portfolio: profile.portfolio || '',
+            ...(profile.custom_fields || {})
+        };
+    };
+
+    const hasProfileValues = (profile = {}) => Object.values(profile).some((value) => String(value || '').trim());
+
     const setDocumentMode = (mode) => {
         activeDocumentMode = ['website', 'document', 'compare'].includes(mode) ? mode : 'website';
         sourceModeSelect.value = activeDocumentMode;
@@ -1766,8 +2364,25 @@
     };
 
     const updateDocumentChip = () => {
-        documentChip.classList.add('hidden');
-        documentChip.innerHTML = '';
+        if (!uploadedDocument) {
+            documentChip.classList.add('hidden');
+            documentChip.innerHTML = '';
+            return;
+        }
+        const filename = uploadedDocument.filename || 'Document';
+        const chars = uploadedDocument.text_chars || uploadedDocument.extracted_text?.length || 0;
+        const size = chars > 1000 ? `${Math.round(chars / 1000)}k chars` : `${chars} chars`;
+        documentChip.innerHTML = `
+            <span class="document-chip-icon">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            </span>
+            <span class="document-chip-name" title="${escapeHtml(filename)}">${escapeHtml(filename)}</span>
+            <span class="document-chip-meta">${size}</span>
+            <button class="document-mode-btn${activeDocumentMode === 'document' ? ' active' : ''}" data-document-mode="document" title="Ask questions about this document">Doc</button>
+            <button class="document-mode-btn${activeDocumentMode === 'compare' ? ' active' : ''}" data-document-mode="compare" title="Compare document with webpage">Compare</button>
+            <button data-remove-document title="Remove document" style="margin-left:2px;">&times;</button>
+        `;
+        documentChip.classList.remove('hidden');
     };
 
     const fileToBase64 = (file) => new Promise((resolve, reject) => {
@@ -1799,6 +2414,7 @@
             };
             const modeAfterUpload = activeDocumentMode === 'compare' ? 'compare' : 'document';
             setDocumentMode(modeAfterUpload);
+            updateDocumentChip();
             status.remove();
             addMessage(`Uploaded: **${result.filename}**`, 'bot', { persist: false });
             updateCompareToolPanel();
@@ -1811,14 +2427,27 @@
     };
 
     const appendModelOptions = (group, models, provider) => {
+        const providerShort = provider === 'openrouter' ? 'OR' : provider === 'gemini' ? 'Gemini' : 'Ollama';
+        const providerFull  = provider === 'openrouter' ? 'OpenRouter' : provider === 'gemini' ? 'Google Gemini' : 'Ollama';
         models.forEach((model) => {
             const option = document.createElement('option');
             option.value = `${provider}:${model}`;
-            option.textContent = `${provider === 'openrouter' ? 'OR' : 'Ollama'}: ${model.split('/').pop().replace(':free', '')}`;
-            option.title = `${provider === 'openrouter' ? 'OpenRouter' : 'Ollama'} - ${model}`;
+            option.textContent = `${providerShort}: ${model.split('/').pop().replace(/:free$|:latest$/g, '')}`;
+            option.title = `${providerFull} - ${model}`;
             group.appendChild(option);
         });
     };
+
+    const fallbackModelOptions = () => ({
+        openrouter_models: [
+            'nvidia/nemotron-3-super-120b-a12b:free',
+            'openai/gpt-oss-120b:free',
+            'google/gemma-4-31b-it:free'
+        ],
+        gemini_models: [],
+        ollama_models: ['qwen2.5:3b'],
+        default_ollama_model: 'qwen2.5:3b'
+    });
 
     const modelMeta = (value = 'auto', label = '') => {
         if (value.startsWith('openrouter:')) {
@@ -1826,8 +2455,17 @@
             return {
                 mark: 'OR',
                 provider: 'OpenRouter',
-                title: model.split('/').pop().replace(':free', '') || 'OpenRouter',
+                title: model.split('/').pop().replace(/:free$|:latest$/g, '') || 'OpenRouter',
                 subtitle: model
+            };
+        }
+        if (value.startsWith('gemini:')) {
+            const model = value.slice('gemini:'.length);
+            return {
+                mark: 'GG',
+                provider: 'Gemini',
+                title: model.replace(/:free$|:latest$/g, '') || 'Gemini',
+                subtitle: 'Google Gemini'
             };
         }
         if (value.startsWith('ollama:')) {
@@ -1868,31 +2506,60 @@
         if (!modelMenu) return;
         modelMenu.innerHTML = '';
 
-        Array.from(modelSelect.options).forEach((option) => {
-            const meta = modelMeta(option.value, option.textContent);
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'model-picker-option';
-            button.setAttribute('role', 'option');
-            button.dataset.value = option.value;
-            button.innerHTML = `
-                <span class="model-option-mark" data-provider="${escapeAttribute(meta.provider.toLowerCase())}" aria-hidden="true">${escapeHtml(meta.mark)}</span>
-                <span class="model-option-copy">
-                    <span class="model-option-title">${escapeHtml(meta.title)}</span>
-                    <span class="model-option-subtitle">${escapeHtml(meta.subtitle)}</span>
-                </span>
-            `;
-            modelMenu.appendChild(button);
+        // Walk the native select's children — mix of <optgroup> and <option>
+        Array.from(modelSelect.children).forEach((child) => {
+            if (child.tagName === 'OPTGROUP') {
+                // Group header label
+                const groupLabel = document.createElement('div');
+                groupLabel.className = 'model-picker-group-label';
+                groupLabel.textContent = child.label;
+                modelMenu.appendChild(groupLabel);
+
+                // Options inside the group
+                Array.from(child.children).forEach((option) => {
+                    const meta = modelMeta(option.value, option.textContent);
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'model-picker-option';
+                    btn.setAttribute('role', 'option');
+                    btn.dataset.value = option.value;
+                    btn.innerHTML = `
+                        <span class="model-option-mark" data-provider="${escapeAttribute(meta.provider.toLowerCase())}" aria-hidden="true">${escapeHtml(meta.mark)}</span>
+                        <span class="model-option-copy">
+                            <span class="model-option-title">${escapeHtml(meta.title)}</span>
+                            <span class="model-option-subtitle">${escapeHtml(meta.subtitle)}</span>
+                        </span>
+                    `;
+                    modelMenu.appendChild(btn);
+                });
+            } else if (child.tagName === 'OPTION') {
+                // Top-level option (e.g. Auto)
+                const meta = modelMeta(child.value, child.textContent);
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'model-picker-option';
+                btn.setAttribute('role', 'option');
+                btn.dataset.value = child.value;
+                btn.innerHTML = `
+                    <span class="model-option-mark" data-provider="${escapeAttribute(meta.provider.toLowerCase())}" aria-hidden="true">${escapeHtml(meta.mark)}</span>
+                    <span class="model-option-copy">
+                        <span class="model-option-title">${escapeHtml(meta.title)}</span>
+                        <span class="model-option-subtitle">${escapeHtml(meta.subtitle)}</span>
+                    </span>
+                `;
+                modelMenu.appendChild(btn);
+            }
         });
 
         syncModelPicker();
     };
 
     const loadModelOptions = async () => {
+        let result = fallbackModelOptions();
         try {
             const settings = JSON.parse(localStorage.getItem(settingsStorageKey) || '{}');
             const preferredChoice = settings.modelChoice || modelSelect.value || 'auto';
-            const result = await sendBackendMessage('fetchOllamaModels', {});
+            result = { ...result, ...(await sendBackendMessage('fetchOllamaModels', {})) };
             const openrouterModels = Array.isArray(result.openrouter_models) ? result.openrouter_models : [];
             const ollamaModels = Array.isArray(result.ollama_models) && result.ollama_models.length
                 ? result.ollama_models
@@ -1902,7 +2569,7 @@
             const autoOption = document.createElement('option');
             autoOption.value = 'auto';
             autoOption.textContent = 'Auto';
-            autoOption.title = 'Auto - OpenRouter first, Ollama fallback';
+            autoOption.title = 'Auto - OpenRouter first, Gemini second, Ollama fallback';
             modelSelect.appendChild(autoOption);
 
             if (openrouterModels.length) {
@@ -1910,6 +2577,14 @@
                 openrouterGroup.label = 'OpenRouter';
                 appendModelOptions(openrouterGroup, openrouterModels, 'openrouter');
                 modelSelect.appendChild(openrouterGroup);
+            }
+
+            const geminiModels = result.gemini_models || [];
+            if (geminiModels.length) {
+                const geminiGroup = document.createElement('optgroup');
+                geminiGroup.label = 'Gemini (Google)';
+                appendModelOptions(geminiGroup, geminiModels, 'gemini');
+                modelSelect.appendChild(geminiGroup);
             }
 
             if (ollamaModels.length) {
@@ -1925,6 +2600,27 @@
             saveSettings();
         } catch (error) {
             console.warn('Unable to load model options:', error);
+            const settings = JSON.parse(localStorage.getItem(settingsStorageKey) || '{}');
+            const preferredChoice = settings.modelChoice || modelSelect.value || 'auto';
+            modelSelect.innerHTML = '';
+            const autoOption = document.createElement('option');
+            autoOption.value = 'auto';
+            autoOption.textContent = 'Auto';
+            autoOption.title = 'Auto - OpenRouter first, Gemini second, Ollama fallback';
+            modelSelect.appendChild(autoOption);
+
+            const openrouterGroup = document.createElement('optgroup');
+            openrouterGroup.label = 'OpenRouter';
+            appendModelOptions(openrouterGroup, result.openrouter_models, 'openrouter');
+            modelSelect.appendChild(openrouterGroup);
+
+            const ollamaGroup = document.createElement('optgroup');
+            ollamaGroup.label = 'Ollama';
+            appendModelOptions(ollamaGroup, result.ollama_models, 'ollama');
+            modelSelect.appendChild(ollamaGroup);
+
+            const availableValues = Array.from(modelSelect.options).map((option) => option.value);
+            modelSelect.value = availableValues.includes(preferredChoice) ? preferredChoice : 'auto';
             rebuildModelPicker();
         }
     };
@@ -1945,10 +2641,19 @@
                 ollama_model: choice.slice('ollama:'.length)
             };
         }
+        if (choice.startsWith('gemini:')) {
+            return {
+                force_provider: 'gemini',
+                openrouter_model: '',
+                ollama_model: '',
+                gemini_model: choice.slice('gemini:'.length)
+            };
+        }
         return {
             force_provider: '',
             openrouter_model: '',
-            ollama_model: ''
+            ollama_model: '',
+            gemini_model: ''
         };
     };
 
@@ -2085,6 +2790,45 @@
 
     const userAskedForLinks = (question = '') => /\b(link|links|url|urls|source|sources|reference|references|contact|email|phone|open|navigate|go to|visit|website)\b/i.test(question);
 
+    const detectAutofillIntent = (question = '') =>
+        /\b(auto[\s-]?fill|autofill|fill\s+(this\s+)?(form|application|fields?)|fill\s+(it|them)\s+out|fill\s+out\s+(the|this)\s+(form|application|fields?)|fill\s+the\s+form|complete\s+(this\s+)?(application|form|fields?)|populate\s+(the\s+)?(fields?|form|inputs?)|fill\s+in\s+(the|this)\s+(form|application|fields?)|can\s+you\s+fill|fill\s+(this|the)\s+out)\b/i
+        .test(question);
+
+    // ── Hybrid Intent Router — frontend helper ────────────────────────────────
+    // Calls /intent-route for queries that are not obviously a chart, flowchart,
+    // autofill, or workflow (those are handled by fast local checks first).
+    // Returns the server intent-route response object.
+    const callIntentRouter = async (question, options = {}) => {
+        try {
+            const inputs = scrapePageInputs ? scrapePageInputs() : [];
+            const profile = currentUserProfile ? currentUserProfile() : null;
+            const modelRequest = selectedModelRequest ? selectedModelRequest() : {};
+            return await sendBackendMessage('fetchIntentRoute', {
+                question,
+                page_has_form: inputs.length > 0,
+                visible_inputs: inputs.length,
+                profile_exists: !!(profile && hasProfileValues && hasProfileValues(profile)),
+                workflow_keywords_present: /\b(admission|application|enroll|eligib|steps?|process|deadline|requirements?)\b/i.test(question),
+                action_keywords_present: /\b(click|open|navigate|scroll|go\s+to|press|select)\b/i.test(question),
+                current_mode: options.mode || 'website',
+                page_title: document.title || '',
+                page_summary: '',
+                ollama_model: modelRequest.ollama_model || '',
+                openrouter_model: modelRequest.openrouter_model || '',
+                gemini_model: modelRequest.gemini_model || '',
+                force_provider: options.forceProvider || modelRequest.force_provider || '',
+                // Use regex-only (skip_llm) for speed; LLM fallback only when
+                // the user explicitly triggers the router via /intent-route.
+                skip_llm: true,
+            });
+        } catch (err) {
+            console.warn('[IntentRouter] callIntentRouter error:', err);
+            return { intent: 'normal_chat', confidence: 0.5, router: 'fallback',
+                     needs_clarification: false, clarification_prompt: '', safety: { ok: true } };
+        }
+    };
+    // ─────────────────────────────────────────────────────────────────────────
+
     const isMessagesNearBottom = () => {
         if (!messagesContainer) return true;
         return messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 56;
@@ -2108,9 +2852,60 @@
         const shouldPersist = options.persist !== false;
         const sentAt = options.timestamp || options.savedAt || Date.now();
         const msg = document.createElement('div');
-        msg.className = `message ${sender}`;
+        const isDeepSearch = Boolean(options.isDeepSearch);
+        msg.className = `message ${sender} ${isDeepSearch ? 'message-deep-search' : 'message-quick-search'}`;
+        const actionBlocks = sender === 'bot' ? parseActionExecutionBlocks(text) : { cleaned: text, actions: [] };
+        
         if (sender === 'bot') {
-            msg.innerHTML = formatBotMessage(text, { linkify: options.allowLinks === true });
+            const contentHtml = formatBotMessage(text, { linkify: options.allowLinks === true });
+            if (isDeepSearch) {
+                let headerHtml = `
+                    <div class="deep-search-header">
+                        <span class="icon">🧠</span>
+                        <span class="title">Aletheia Research Report</span>
+                    </div>
+                `;
+                
+                if (options.deepSearchSummary) {
+                    const sum = options.deepSearchSummary;
+                    let covHtml = '';
+                    if (sum.coverage) {
+                        covHtml = `
+                            <div class="deep-search-coverage">
+                                <h4>Research Coverage</h4>
+                                <div class="coverage-grid">
+                                    ${Object.entries(sum.coverage).map(([k, v]) => `<div class="coverage-item ${v ? 'found' : 'missing'}"><span class="icon">${v ? '✓' : '✗'}</span> <span class="label">${k.charAt(0).toUpperCase() + k.slice(1)}</span></div>`).join('')}
+                                </div>
+                            </div>
+                        `;
+                    }
+                    let missHtml = '';
+                    if (sum.missing_information && sum.missing_information.length > 0) {
+                        missHtml = `
+                            <div class="deep-search-missing-info">
+                                <h4>Information Not Found</h4>
+                                <ul>
+                                    ${sum.missing_information.map(info => `<li>${info}</li>`).join('')}
+                                </ul>
+                            </div>
+                        `;
+                    }
+                    
+                    headerHtml += `
+                        <div class="deep-search-summary">
+                            <div class="stat"><span>Pages Crawled:</span> <strong>${sum.pages_crawled || 0}</strong></div>
+                            <div class="stat"><span>Sources Used:</span> <strong>${sum.sources_used || 0}</strong></div>
+                            <div class="stat"><span>Confidence:</span> <strong>${sum.confidence || 'N/A'}</strong></div>
+                        </div>
+                        ${covHtml}
+                        ${missHtml}
+                    `;
+                }
+                msg.innerHTML = headerHtml + `<div class="message-body">${contentHtml}</div>`;
+            } else {
+                msg.innerHTML = `<div class="message-body">${contentHtml}</div>`;
+            }
+            appendActionConsentCard(msg, actionBlocks.actions);
             if (options.allowLinks) {
                 appendOpenLinkButtons(msg, text);
             }
@@ -2195,27 +2990,36 @@
         if (!sources.length) return;
 
         const sourceWrap = document.createElement('div');
-        sourceWrap.className = 'message-sources';
+        sourceWrap.className = 'source-preview-container';
 
         sources.slice(0, 4).forEach((source) => {
-            if (source.source_type === 'document' || String(source.url || '').startsWith('document://')) {
-                const item = document.createElement('span');
-                item.textContent = source.id ? `[${source.id}] ${source.title || 'Uploaded document'}` : (source.title || 'Uploaded document');
-                sourceWrap.appendChild(item);
-                return;
+            const isDoc = source.source_type === 'document' || String(source.url || '').startsWith('document://');
+            const relevanceLabel = source.relevance_score ? (source.relevance_score >= 0.85 ? 'High' : 'Medium') : 'High';
+            const lastUpdated = source.last_updated || 'June 2026';
+            const title = source.title && source.title !== source.url ? source.title : (isDoc ? 'Uploaded document' : 'Web Source');
+            const section = source.section || 'General';
+            const snippet = source.snippet || 'Relevant match from site crawl and deep database retrieval.';
+
+            const previewCard = document.createElement('a');
+            previewCard.className = 'source-preview-card';
+            if (isDoc) {
+                previewCard.removeAttribute('href'); // no link for local docs
+                previewCard.style.cursor = 'default';
+            } else {
+                previewCard.href = source.url;
+                previewCard.target = '_blank';
+                previewCard.rel = 'noopener noreferrer';
             }
 
-            const link = document.createElement('a');
-            link.href = source.url;
-            link.target = '_blank';
-            link.rel = 'noopener noreferrer';
-            link.title = source.url;
-            const title = source.title && source.title !== source.url ? source.title : 'Source';
-            link.innerHTML = `
-                <span class="source-title">${escapeHtml(source.id ? `[${source.id}] ${title}` : title)}</span>
-                <span class="source-url">${escapeHtml(shortDisplayUrl(source.url))}</span>
+            previewCard.innerHTML = `
+                <div class="source-preview-header">
+                    <span class="source-preview-title">${escapeHtml(source.id ? `[${source.id}] ${title}` : title)}</span>
+                    <span class="source-preview-relevance">${escapeHtml(relevanceLabel)} Relevance</span>
+                </div>
+                <div class="source-preview-meta">Section: ${escapeHtml(section)} &bull; Updated: ${escapeHtml(lastUpdated)}</div>
+                <div class="source-preview-snippet">${escapeHtml(snippet)}</div>
             `;
-            sourceWrap.appendChild(link);
+            sourceWrap.appendChild(previewCard);
         });
 
         messageEl.appendChild(sourceWrap);
@@ -2327,15 +3131,18 @@
         msg.className = 'message bot';
         messagesContainer.appendChild(msg);
         const shouldShowLinks = userAskedForLinks(details.question || '');
+        const actionBlocks = parseActionExecutionBlocks(text);
+        const displayText = actionBlocks.cleaned || 'Review the autofill plan below.';
 
-        const step = Math.max(4, Math.ceil(text.length / 80));
-        for (let index = step; index < text.length; index += step) {
-            msg.innerHTML = formatBotMessage(text.slice(0, index), { linkify: shouldShowLinks });
+        const step = Math.max(4, Math.ceil(displayText.length / 80));
+        for (let index = step; index < displayText.length; index += step) {
+            msg.innerHTML = formatBotMessage(displayText.slice(0, index), { linkify: shouldShowLinks });
             scrollMessagesToBottom();
             await new Promise((resolve) => setTimeout(resolve, 15));
         }
 
-        msg.innerHTML = formatBotMessage(text, { linkify: shouldShowLinks });
+        msg.innerHTML = formatBotMessage(displayText, { linkify: shouldShowLinks });
+        appendActionConsentCard(msg, actionBlocks.actions);
         attachFlowDiagramQuestions(msg, details.question || '');
         appendModelBadge(msg, details);
         
@@ -2372,42 +3179,160 @@
         return msg;
     };
 
-    const createStreamingBotMessage = (detail = 'Preparing response...') => {
+    const createStreamingBotMessage = (detail = 'Preparing response...', options = {}) => {
         const msg = document.createElement('div');
-        msg.className = 'message bot streaming';
-        msg.innerHTML = `
-            <div class="tool-status-card" role="status" aria-live="polite">
-                <span class="tool-status-spinner" aria-hidden="true"></span>
-                <span class="tool-status-copy">
-                    <span class="tool-status-title">Assistant is working</span>
-                    <span class="tool-status-detail">${escapeHtml(detail)}</span>
-                </span>
+        const isDeepSearch = Boolean(options.isDeepSearch);
+        msg.className = `message bot streaming ${isDeepSearch ? 'message-deep-search' : 'message-quick-search'}`;
+        let innerHtml = '';
+        if (isDeepSearch) {
+            innerHtml += `
+                <div class="deep-search-header">
+                    <span class="icon">🧠</span>
+                    <span class="title">Aletheia Research Report</span>
+                </div>
+            `;
+        }
+        innerHtml += `
+            <div class="processing-status-widget" role="status" aria-live="polite">
+                <div class="psw-header">
+                    <span class="psw-title">Processing Request</span>
+                    <span class="psw-loader"></span>
+                </div>
+                <div class="psw-steps">
+                    <div class="psw-step step-retrieval active">
+                        <span class="psw-step-bullet"></span>
+                        <span class="psw-step-text">Searching database and local page cache...</span>
+                    </div>
+                    <div class="psw-step step-web">
+                        <span class="psw-step-bullet"></span>
+                        <span class="psw-step-text">Fetching external web results if needed...</span>
+                    </div>
+                    <div class="psw-step step-rerank">
+                        <span class="psw-step-bullet"></span>
+                        <span class="psw-step-text">Ranking matching sections and validation...</span>
+                    </div>
+                    <div class="psw-step step-generation">
+                        <span class="psw-step-bullet"></span>
+                        <span class="psw-step-text">Drafting final answer using LLM...</span>
+                    </div>
+                </div>
             </div>
         `;
+        msg.innerHTML = innerHtml;
         messagesContainer.appendChild(msg);
         scrollMessagesToBottom();
+
+        // Simulate step transitions based on standard retrieval timing:
+        // Step 1 -> Step 2
+        setTimeout(() => {
+            const step1 = msg.querySelector('.step-retrieval');
+            const step2 = msg.querySelector('.step-web');
+            if (step1 && step2 && !msg.classList.contains('done-generating')) {
+                step1.classList.remove('active');
+                step1.classList.add('complete');
+                step2.classList.add('active');
+            }
+        }, 550);
+
+        // Step 2 -> Step 3
+        setTimeout(() => {
+            const step2 = msg.querySelector('.step-web');
+            const step3 = msg.querySelector('.step-rerank');
+            if (step2 && step3 && !msg.classList.contains('done-generating')) {
+                step2.classList.remove('active');
+                step2.classList.add('complete');
+                step3.classList.add('active');
+            }
+        }, 1100);
+
         return msg;
     };
 
     const updateStreamingBotMessage = (msg, text) => {
-        const raw = text || '';
-        // If a ```json block has opened but not yet closed, the JSON is incomplete.
+        const raw = parseActionExecutionBlocks(text || '').cleaned || '';
+        // If a \`\`\`json block has opened but not yet closed, the JSON is incomplete.
         // Rendering partial JSON always fails and shows raw text — show a placeholder instead.
-        const jsonOpenIdx = raw.lastIndexOf('```json');
-        const jsonCloseIdx = raw.lastIndexOf('```', jsonOpenIdx + 6);
+        const jsonOpenIdx = raw.lastIndexOf('\`\`\`json');
+        const jsonCloseIdx = raw.lastIndexOf('\`\`\`', jsonOpenIdx + 6);
         const jsonIsPartial = jsonOpenIdx !== -1 && (jsonCloseIdx <= jsonOpenIdx);
+        
+        const isDeepSearch = msg.classList.contains('message-deep-search');
+        let contentHtml = '';
         if (jsonIsPartial) {
-            msg.innerHTML = '<span class="flow-diagram-generating">&#9881; Generating diagram…</span>';
+            contentHtml = '<span class="flow-diagram-generating">&#9881; Generating diagram…</span>';
         } else {
-            msg.innerHTML = formatBotMessage(raw);
+            contentHtml = formatBotMessage(raw, { isDeepSearch });
         }
+        
+        let bodyEl = msg.querySelector('.message-body');
+        if (!bodyEl && !isDeepSearch) {
+            msg.innerHTML = `<div class="message-body"></div>`;
+            bodyEl = msg.querySelector('.message-body');
+        } else if (!bodyEl) {
+            bodyEl = msg;
+        }
+        bodyEl.innerHTML = contentHtml;
         scrollMessagesToBottom();
     };
 
     const finalizeStreamingBotMessage = (msg, text, sources = [], usedExternalSearch = false, details = {}) => {
         msg.classList.remove('streaming', 'typing');
         const shouldShowLinks = userAskedForLinks(details.question || '');
-        msg.innerHTML = formatBotMessage(text, { linkify: shouldShowLinks });
+        const actionBlocks = parseActionExecutionBlocks(text);
+        const displayText = actionBlocks.cleaned || 'Review the autofill plan below.';
+        const isDeepSearch = msg.classList.contains('message-deep-search');
+        
+        const contentHtml = formatBotMessage(displayText, { linkify: shouldShowLinks, isDeepSearch });
+        
+        if (isDeepSearch) {
+            let headerHtml = `
+                <div class="deep-search-header">
+                    <span class="icon">🧠</span>
+                    <span class="title">Aletheia Research Report</span>
+                </div>
+            `;
+            
+            if (details.deepSearchSummary) {
+                const sum = details.deepSearchSummary;
+                let covHtml = '';
+                if (sum.coverage) {
+                    covHtml = `
+                        <div class="deep-search-coverage">
+                            <h4>Research Coverage</h4>
+                            <div class="coverage-grid">
+                                ${Object.entries(sum.coverage).map(([k, v]) => `<div class="coverage-item ${v ? 'found' : 'missing'}"><span class="icon">${v ? '✓' : '✗'}</span> <span class="label">${k.charAt(0).toUpperCase() + k.slice(1)}</span></div>`).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+                let missHtml = '';
+                if (sum.missing_information && sum.missing_information.length > 0) {
+                    missHtml = `
+                        <div class="deep-search-missing-info">
+                            <h4>Information Not Found</h4>
+                            <ul>
+                                ${sum.missing_information.map(info => `<li>${info}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
+                
+                headerHtml += `
+                    <div class="deep-search-summary">
+                        <div class="stat"><span>Pages Crawled:</span> <strong>${sum.pages_crawled || 0}</strong></div>
+                        <div class="stat"><span>Sources Used:</span> <strong>${sum.sources_used || 0}</strong></div>
+                        <div class="stat"><span>Confidence:</span> <strong>${sum.confidence || 'N/A'}</strong></div>
+                    </div>
+                    ${covHtml}
+                    ${missHtml}
+                `;
+            }
+            msg.innerHTML = headerHtml + `<div class="message-body">${contentHtml}</div>`;
+        } else {
+            msg.innerHTML = `<div class="message-body">${contentHtml}</div>`;
+        }
+        
+        appendActionConsentCard(msg, actionBlocks.actions);
         attachFlowDiagramQuestions(msg, details.question || '');
         appendModelBadge(msg, details);
 
@@ -2443,6 +3368,71 @@
         window.setTimeout(() => autoHighlightAnswerMatch(details.question || '', text), 120);
     };
 
+    const restoreStreamState = (state) => {
+        let typing = messagesContainer.querySelector('.message.bot.typing');
+        if (!typing) {
+            typing = addMessage('', 'bot');
+            typing.classList.add('typing');
+        }
+        typing.classList.remove('status-msg');
+        
+        activeResponseMessage = typing;
+        activeBackendRequestId = state.requestId;
+        const currentRequest = ++requestSerial;
+        const restoredRequest = currentRequest;
+        
+        if (state.partialContent) {
+            updateStreamingBotMessage(typing, state.partialContent);
+        }
+        
+        if (state.status === 'completed' || state.status === 'error') {
+            finalizeStreamingBotMessage(typing, state.partialContent || (state.status === 'error' ? 'Stream failed or was interrupted.' : ''), state.sources || [], false, {
+                question: '', 
+                provider: '',
+                model: '',
+                contentHash: ''
+            });
+            setSendButtonBusy(false);
+            activeBackendRequestId = '';
+        } else if (state.status === 'aborted') {
+            typing.classList.remove('streaming', 'typing');
+            typing.innerHTML = formatBotMessage(state.partialContent) + '<br><br><em>[Stream aborted]</em>';
+            setSendButtonBusy(false);
+            activeBackendRequestId = '';
+        } else {
+            // Stream is still active — wire up a live listener so incoming chunks continue to render.
+            setSendButtonBusy(true);
+            typing.classList.add('streaming');
+            let liveAnswer = state.partialContent || '';
+            const requestId = state.requestId;
+
+            const liveListener = (message) => {
+                if (!message || message.action !== 'chatStreamEvent' || message.requestId !== requestId) return;
+                if (stoppedSerial === restoredRequest) {
+                    chrome.runtime.onMessage.removeListener(liveListener);
+                    return;
+                }
+                const event = message.event || {};
+                if (event.type === 'delta') {
+                    liveAnswer += event.text || '';
+                    updateStreamingBotMessage(typing, liveAnswer);
+                } else if (event.type === 'done' || event.type === 'error') {
+                    chrome.runtime.onMessage.removeListener(liveListener);
+                    finalizeStreamingBotMessage(typing, liveAnswer || (event.type === 'error' ? 'Stream interrupted.' : ''), event.sources || state.sources || [], false, {
+                        provider: event.provider || '',
+                        model: event.model || '',
+                        question: '',
+                        contentHash: ''
+                    });
+                    setSendButtonBusy(false);
+                    activeBackendRequestId = '';
+                    activeResponseMessage = null;
+                }
+            };
+            chrome.runtime.onMessage.addListener(liveListener);
+        }
+    };
+
     const updateStatusMessage = (messageEl, text) => {
         if (!messageEl) return;
         const detailEl = messageEl.querySelector?.('.tool-status-detail');
@@ -2459,18 +3449,65 @@
     const addToolStatusMessage = (toolName, detail = 'Working...') => {
         const msg = addMessage('', 'bot', { persist: false });
         msg.classList.add('tool-status-message', 'typing');
-        const title = String(toolName || '').toLowerCase() === 'assistant'
-            ? 'Assistant is working'
-            : `Using ${toolName}`;
-        msg.innerHTML = `
-            <div class="tool-status-card" role="status" aria-live="polite">
-                <span class="tool-status-spinner" aria-hidden="true"></span>
-                <span class="tool-status-copy">
-                    <span class="tool-status-title">${escapeHtml(title)}</span>
-                    <span class="tool-status-detail">${escapeHtml(detail)}</span>
-                </span>
-            </div>
-        `;
+        const isAssistant = String(toolName || '').toLowerCase() === 'assistant';
+        const title = isAssistant ? 'Processing Request' : `Using ${toolName}`;
+
+        if (isAssistant) {
+            msg.innerHTML = `
+                <div class="processing-status-widget" role="status" aria-live="polite">
+                    <div class="psw-header">
+                        <span class="psw-title">${escapeHtml(title)}</span>
+                        <span class="psw-loader"></span>
+                    </div>
+                    <div class="psw-steps">
+                        <div class="psw-step step-retrieval active">
+                            <span class="psw-step-bullet"></span>
+                            <span class="psw-step-text">Searching database and local page cache...</span>
+                        </div>
+                        <div class="psw-step step-web">
+                            <span class="psw-step-bullet"></span>
+                            <span class="psw-step-text">Fetching external web results if needed...</span>
+                        </div>
+                        <div class="psw-step step-rerank">
+                            <span class="psw-step-bullet"></span>
+                            <span class="psw-step-text">Ranking matching sections and validation...</span>
+                        </div>
+                        <div class="psw-step step-generation">
+                            <span class="psw-step-bullet"></span>
+                            <span class="psw-step-text">Drafting final answer using LLM...</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            setTimeout(() => {
+                const step1 = msg.querySelector('.step-retrieval');
+                const step2 = msg.querySelector('.step-web');
+                if (step1 && step2) {
+                    step1.classList.remove('active');
+                    step1.classList.add('complete');
+                    step2.classList.add('active');
+                }
+            }, 550);
+            setTimeout(() => {
+                const step2 = msg.querySelector('.step-web');
+                const step3 = msg.querySelector('.step-rerank');
+                if (step2 && step3) {
+                    step2.classList.remove('active');
+                    step2.classList.add('complete');
+                    step3.classList.add('active');
+                }
+            }, 1100);
+        } else {
+            msg.innerHTML = `
+                <div class="tool-status-card" role="status" aria-live="polite">
+                    <span class="tool-status-spinner" aria-hidden="true"></span>
+                    <span class="tool-status-copy">
+                        <span class="tool-status-title">${escapeHtml(title)}</span>
+                        <span class="tool-status-detail">${escapeHtml(detail)}</span>
+                    </span>
+                </div>
+            `;
+        }
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
         return msg;
     };
@@ -2530,6 +3567,111 @@
             style.visibility !== 'hidden' &&
             style.opacity !== '0' &&
             element.getClientRects().length > 0;
+    };
+
+    const isEnabledFormElement = (element) => {
+        if (!element || element.disabled || element.readOnly) return false;
+        if (element.closest('fieldset[disabled]')) return false;
+        return isVisibleElement(element);
+    };
+
+    const labelForFormElement = (element) => {
+        const id = element.id ? CSS.escape(element.id) : '';
+        const labels = [];
+        if (id) {
+            document.querySelectorAll(`label[for="${id}"]`).forEach((label) => {
+                labels.push(normalizeText(label.innerText || label.textContent || ''));
+            });
+        }
+        if (element.closest('label')) {
+            labels.push(normalizeText(element.closest('label').innerText || element.closest('label').textContent || ''));
+        }
+        const ariaLabelledBy = (element.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean);
+        ariaLabelledBy.forEach((labelId) => {
+            const labelEl = document.getElementById(labelId);
+            if (labelEl) labels.push(normalizeText(labelEl.innerText || labelEl.textContent || ''));
+        });
+        labels.push(
+            element.getAttribute('aria-label') || '',
+            element.getAttribute('title') || '',
+            element.getAttribute('name') || '',
+            element.getAttribute('id') || ''
+        );
+        return labels.map(normalizeText).find(Boolean) || '';
+    };
+
+    let autofillElementRegistry = new Map();
+
+    const registerAutofillField = (metadata, elements) => {
+        const key = `field-${autofillElementRegistry.size + 1}`;
+        autofillElementRegistry.set(key, { metadata, elements: Array.isArray(elements) ? elements : [elements] });
+        return key;
+    };
+
+    const scrapePageInputs = () => {
+        autofillElementRegistry = new Map();
+        const inputs = [];
+        const radioGroups = new Map();
+
+        const addField = (element, typeOverride = '') => {
+            if (!isEnabledFormElement(element)) return;
+            const tag = element.tagName.toLowerCase();
+            const type = (typeOverride || element.getAttribute('type') || tag).toLowerCase();
+            if (['hidden', 'submit', 'button', 'reset', 'image', 'file', 'password'].includes(type)) return;
+            const options = tag === 'select'
+                ? Array.from(element.options || []).map((option) => normalizeText(option.textContent || option.value)).filter(Boolean)
+                : [];
+            const label = labelForFormElement(element);
+            const metadata = {
+                label,
+                placeholder: element.getAttribute('placeholder') || '',
+                type,
+                required: Boolean(element.required || element.getAttribute('aria-required') === 'true'),
+                options,
+                selector_metadata: {
+                    name: element.getAttribute('name') || '',
+                    id: element.id || '',
+                    autocomplete: element.getAttribute('autocomplete') || ''
+                }
+            };
+            metadata.field_id = registerAutofillField(metadata, element);
+            inputs.push(metadata);
+        };
+
+        document.querySelectorAll('input, textarea, select').forEach((element) => {
+            if (container.contains(element)) return;
+            const type = (element.getAttribute('type') || element.tagName).toLowerCase();
+            if (type === 'radio') {
+                if (!isEnabledFormElement(element)) return;
+                const groupName = element.name || element.getAttribute('aria-label') || labelForFormElement(element) || `radio-${radioGroups.size + 1}`;
+                if (!radioGroups.has(groupName)) radioGroups.set(groupName, []);
+                radioGroups.get(groupName).push(element);
+                return;
+            }
+            addField(element);
+        });
+
+        radioGroups.forEach((elements, groupName) => {
+            const visibleElements = elements.filter(isEnabledFormElement);
+            if (!visibleElements.length) return;
+            const first = visibleElements[0];
+            const metadata = {
+                label: labelForFormElement(first) || groupName,
+                placeholder: '',
+                type: 'radio',
+                required: visibleElements.some((element) => element.required || element.getAttribute('aria-required') === 'true'),
+                options: visibleElements.map((element) => labelForFormElement(element) || element.value).filter(Boolean),
+                selector_metadata: {
+                    name: groupName,
+                    id: first.id || '',
+                    autocomplete: ''
+                }
+            };
+            metadata.field_id = registerAutofillField(metadata, visibleElements);
+            inputs.push(metadata);
+        });
+
+        return inputs.slice(0, 80);
     };
 
     const resolveNavigableUrl = (value) => {
@@ -3296,11 +4438,284 @@
     };
 
     const highlightActionElement = (element) => {
-        element.classList.add('web-chatbot-action-highlight');
+        element.classList.add('web-chatbot-action-highlight', 'autofill-highlight');
         element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
         window.setTimeout(() => {
-            element.classList.remove('web-chatbot-action-highlight');
+            element.classList.remove('web-chatbot-action-highlight', 'autofill-highlight');
         }, 2200);
+    };
+
+    const normalizeFieldText = (value = '') => String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+
+    const scoreAutofillField = (metadata = {}, target = '') => {
+        const targetText = normalizeFieldText(target);
+        if (!targetText) return 0;
+        const haystack = normalizeFieldText([
+            metadata.label,
+            metadata.placeholder,
+            metadata.selector_metadata?.name,
+            metadata.selector_metadata?.id,
+            metadata.selector_metadata?.autocomplete
+        ].join(' '));
+        if (!haystack) return 0;
+        if (haystack === targetText) return 100;
+        if (haystack.includes(targetText) || targetText.includes(haystack)) return 70;
+        const targetTokens = new Set(targetText.split(/\s+/).filter((token) => token.length > 1));
+        const fieldTokens = new Set(haystack.split(/\s+/).filter((token) => token.length > 1));
+        let score = 0;
+        targetTokens.forEach((token) => {
+            if (fieldTokens.has(token)) score += 12;
+        });
+        return score;
+    };
+
+    const resolveAutofillField = (action = {}) => {
+        const fieldName = action.field || action.label || action.placeholder || '';
+        const entries = Array.from(autofillElementRegistry.values());
+        return entries
+            .map((entry) => ({ ...entry, score: scoreAutofillField(entry.metadata, fieldName) }))
+            .sort((a, b) => b.score - a.score)[0] || null;
+    };
+
+    const validateElement = (element) => Boolean(element && isEnabledFormElement(element));
+
+    const setSelectValue = (element, value) => {
+        const wanted = normalizeFieldText(value);
+        const option = Array.from(element.options || []).find((item) =>
+            normalizeFieldText(item.value) === wanted || normalizeFieldText(item.textContent) === wanted
+        ) || Array.from(element.options || []).find((item) =>
+            normalizeFieldText(item.value).includes(wanted) || normalizeFieldText(item.textContent).includes(wanted)
+        );
+        if (!option) return false;
+        element.focus();
+        element.value = option.value;
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+        element.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+    };
+
+    const valueForUndo = (element) => {
+        if (!element) return '';
+        if (element.type === 'checkbox' || element.type === 'radio') return Boolean(element.checked);
+        if (element.isContentEditable) return element.textContent || '';
+        return element.value || '';
+    };
+
+    const restoreAutofillValue = (element, value) => {
+        if (!element) return;
+        if (element.type === 'checkbox' || element.type === 'radio') {
+            element.checked = Boolean(value);
+            element.dispatchEvent(new Event('change', { bubbles: true }));
+            return;
+        }
+        setNativeInputValue(element, value);
+    };
+
+    const applyAutofillAction = async (action, statusEl, undoStack) => {
+        const actionRisk = analyzeAutofillActionRisk(action);
+        if (actionRisk.blocked) {
+            if (statusEl) statusEl.textContent = `${action.field || 'Sensitive field'} blocked`;
+            return false;
+        }
+
+        const resolved = resolveAutofillField(action);
+        if (!resolved || resolved.score < 8) {
+            if (statusEl) statusEl.textContent = `${action.field || 'Field'} not found`;
+            return false;
+        }
+        if (isSensitiveAutofillTarget([
+            resolved.metadata?.label,
+            resolved.metadata?.placeholder,
+            resolved.metadata?.type,
+            resolved.metadata?.selector_metadata?.name,
+            resolved.metadata?.selector_metadata?.id,
+            resolved.metadata?.selector_metadata?.autocomplete
+        ].join(' '))) {
+            if (statusEl) statusEl.textContent = `${action.field || resolved.metadata?.label || 'Sensitive field'} blocked`;
+            return false;
+        }
+
+        const elements = resolved.elements.filter(validateElement);
+        if (!elements.length) {
+            if (statusEl) statusEl.textContent = `${action.field || resolved.metadata.label || 'Field'} not found`;
+            return false;
+        }
+
+        const type = String(action.type || 'fill').toLowerCase();
+        const value = String(action.value ?? '');
+        if (statusEl) statusEl.textContent = `Filling ${action.field || resolved.metadata.label || 'field'}`;
+
+        let changed = false;
+        if (resolved.metadata.type === 'radio') {
+            const selected = elements.find((element) => scoreAutofillField({ label: labelForFormElement(element), placeholder: element.value }, value) > 0);
+            if (selected) {
+                undoStack.push({ element: selected, oldValue: valueForUndo(selected) });
+                highlightActionElement(selected);
+                selected.checked = true;
+                selected.dispatchEvent(new Event('change', { bubbles: true }));
+                changed = true;
+            }
+        } else {
+            const element = elements[0];
+            undoStack.push({ element, oldValue: valueForUndo(element) });
+            highlightActionElement(element);
+            if (element.tagName === 'SELECT' || type === 'select') {
+                changed = setSelectValue(element, value);
+            } else if (type === 'check' || type === 'uncheck' || element.type === 'checkbox') {
+                element.checked = type === 'uncheck' ? false : !/^(false|no|off|0)$/i.test(value);
+                element.dispatchEvent(new Event('change', { bubbles: true }));
+                changed = true;
+            } else {
+                setNativeInputValue(element, value);
+                changed = true;
+            }
+        }
+
+        await new Promise((resolve) => window.setTimeout(resolve, 180));
+        return changed;
+    };
+
+    const actionsFromConsentCard = (card) => {
+        let originalActions = [];
+        try {
+            originalActions = JSON.parse(card.dataset.originalActions || '[]');
+        } catch (error) {
+            originalActions = [];
+        }
+
+        return Array.from(card.querySelectorAll('.action-row'))
+            .map((row) => {
+                const index = Number(row.dataset.actionIndex || 0);
+                const original = originalActions[index] || {};
+                const include = row.querySelector('.action-include-input');
+                if (!include || !include.checked || include.disabled) return null;
+                const field = row.querySelector('.action-field-input')?.value?.trim() || original.field || '';
+                const value = row.querySelector('.action-value-input')?.value ?? original.value ?? '';
+                const edited = field !== (original.field || '') || String(value) !== String(original.value ?? '');
+                const action = {
+                    ...original,
+                    field,
+                    value,
+                    confidence: edited ? Math.max(Number(original.confidence || 0), AUTOFILL_LOW_CONFIDENCE_THRESHOLD) : original.confidence
+                };
+                return analyzeAutofillActionRisk(action).blocked ? null : action;
+            })
+            .filter(Boolean);
+    };
+
+    const previewAutofillPlan = (card) => {
+        const actions = actionsFromConsentCard(card);
+        const statusEl = card.querySelector('.action-status');
+        if (!actions.length) {
+            if (statusEl) statusEl.textContent = 'No enabled mappings to preview.';
+            return;
+        }
+
+        let matched = 0;
+        actions.forEach((action) => {
+            const resolved = resolveAutofillField(action);
+            if (resolved && isSensitiveAutofillTarget([
+                resolved.metadata?.label,
+                resolved.metadata?.placeholder,
+                resolved.metadata?.type,
+                resolved.metadata?.selector_metadata?.name,
+                resolved.metadata?.selector_metadata?.id,
+                resolved.metadata?.selector_metadata?.autocomplete
+            ].join(' '))) return;
+            const element = resolved?.elements?.find(validateElement);
+            if (!element || resolved.score < 8) return;
+            matched += 1;
+            highlightActionElement(element);
+        });
+        if (statusEl) statusEl.textContent = `Preview matched ${matched}/${actions.length} enabled fields.`;
+        saveAutofillSession(actions, 'preview');
+    };
+
+    const formCompletionReport = () => {
+        const required = Array.from(document.querySelectorAll('input, textarea, select'))
+            .filter((element) => !container.contains(element))
+            .filter((element) => (element.required || element.getAttribute('aria-required') === 'true') && isEnabledFormElement(element));
+
+        const emptyRequired = required.filter((element) => {
+            const type = (element.getAttribute('type') || '').toLowerCase();
+            if (type === 'checkbox' || type === 'radio') {
+                const name = element.name;
+                if (name) {
+                    return !Array.from(document.querySelectorAll(`input[name="${CSS.escape(name)}"]`)).some((candidate) => candidate.checked);
+                }
+                return !element.checked;
+            }
+            return !String(element.value || '').trim();
+        });
+
+        return {
+            required: required.length,
+            remaining: emptyRequired.length,
+            complete: emptyRequired.length === 0,
+            labels: emptyRequired.map(labelForFormElement).filter(Boolean).slice(0, 5)
+        };
+    };
+
+    const detectNextStepControls = () => Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"], a[role="button"]'))
+        .filter((element) => !container.contains(element) && isVisibleElement(element))
+        .filter((element) => /\b(next|continue|save and continue|review|proceed)\b/i.test(element.innerText || element.value || element.getAttribute('aria-label') || ''))
+        .slice(0, 3);
+
+    const showAutofillUndoBanner = (undoStack = []) => {
+        if (!undoStack.length) return;
+        const banner = document.createElement('div');
+        banner.className = 'undo-banner';
+        banner.innerHTML = '<span>Autofill complete</span><button type="button">Undo Autofill</button>';
+        banner.querySelector('button').onclick = () => {
+            undoStack.slice().reverse().forEach(({ element, oldValue }) => restoreAutofillValue(element, oldValue));
+            banner.remove();
+            addMessage('Autofill undone.', 'bot', { persist: false });
+        };
+        messagesContainer.appendChild(banner);
+        scrollMessagesToBottom(true);
+        window.setTimeout(() => banner.remove(), 30000);
+    };
+
+    const executeAutofillPlan = async (card) => {
+        const actions = actionsFromConsentCard(card);
+        const approveButton = card.querySelector('.action-approve');
+        const previewButton = card.querySelector('.action-preview');
+        const cancelButton = card.querySelector('.action-cancel');
+        const statusEl = card.querySelector('.action-status');
+        if (!actions.length) {
+            if (statusEl) statusEl.textContent = 'No enabled mappings to fill. Review low-confidence rows first.';
+            return;
+        }
+        approveButton.disabled = true;
+        if (previewButton) previewButton.disabled = true;
+        if (cancelButton) cancelButton.disabled = true;
+        const undoStack = [];
+        let completed = 0;
+        for (let index = 0; index < actions.length; index += 1) {
+            const action = actions[index];
+            if (statusEl) statusEl.textContent = `Step ${index + 1}/${actions.length}`;
+            const ok = await applyAutofillAction(action, statusEl, undoStack);
+            if (ok) completed += 1;
+        }
+        const report = formCompletionReport();
+        if (statusEl) {
+            statusEl.textContent = report.complete
+                ? `Filled ${completed}/${actions.length} fields. Required fields look complete.`
+                : `Filled ${completed}/${actions.length} fields. ${report.remaining} required field${report.remaining === 1 ? '' : 's'} still need review.`;
+        }
+        const nextControls = detectNextStepControls();
+        if (nextControls.length && !card.querySelector('.action-session-note')) {
+            const note = document.createElement('div');
+            note.className = 'action-session-note';
+            note.textContent = 'Multi-step session active. Review this page, then continue to the next step manually and ask Aletheia to autofill again.';
+            card.appendChild(note);
+        }
+        card.classList.add('executed');
+        saveAutofillSession(actions, 'filled');
+        showAutofillUndoBanner(undoStack);
     };
 
     const performSiteSearch = (query) => {
@@ -3420,44 +4835,47 @@
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     };
 
+    // Cache search provider config — loaded once on init
+    let _searchConfig = { tavily_available: false, primary_provider: 'none' };
+    const loadSearchConfig = async () => {
+        try {
+            const cfg = await sendBackendMessage('fetchSearchConfig', {});
+            if (cfg && !cfg.error) _searchConfig = cfg;
+        } catch (_) {}
+    };
+    loadSearchConfig();
+
     const addExternalSearchReviewCard = ({ question, onApprove }) => {
+        const isTavily = _searchConfig.tavily_available;
+        const providerName = isTavily ? 'Tavily' : 'Web Search';
+        const providerDesc = isTavily
+            ? 'AI-powered search — fast, accurate, real-time'
+            : 'External web search';
+        const fallbackNote = '';
+
         const card = document.createElement('div');
-        card.className = 'human-review-card';
-
-        const title = document.createElement('h4');
-        title.textContent = 'External search permission';
-
-        const details = document.createElement('p');
-        details.textContent = `This page does not seem to contain enough information for "${question}". Do you want me to search DuckDuckGo?`;
-
-        const actions = document.createElement('div');
-        actions.className = 'human-review-actions';
-
-        const approve = document.createElement('button');
-        approve.className = 'btn-approve-action';
-        approve.type = 'button';
-        approve.textContent = 'Search DuckDuckGo';
-
-        const cancel = document.createElement('button');
-        cancel.className = 'btn-cancel-action';
-        cancel.type = 'button';
-        cancel.textContent = 'Stay on Page';
-
-        approve.onclick = () => {
+        card.className = 'external-search-permission-card';
+        card.innerHTML = `
+            <div class="esp-header">
+                <span class="esp-title">Not enough info on this page</span>
+            </div>
+            <p class="esp-desc">I couldn't find enough information on this page to answer <strong>&ldquo;${escapeHtml(question)}&rdquo;</strong> well.</p>
+            <div class="esp-provider-box">
+                <span class="esp-provider-name">${escapeHtml(providerName)}</span>
+                <span class="esp-provider-desc">${escapeHtml(providerDesc)}</span>
+                ${fallbackNote ? `<span class="esp-provider-fallback">${escapeHtml(fallbackNote)}</span>` : ''}
+            </div>
+            <p class="esp-ask">May I search the web to find a better answer?</p>
+            <div class="esp-actions">
+                <button class="esp-btn-approve" type="button">Search with ${escapeHtml(providerName)}</button>
+                <button class="esp-btn-cancel" type="button">Stay on page</button>
+            </div>
+        `;
+        card.querySelector('.esp-btn-approve').onclick = () => { card.remove(); onApprove(); };
+        card.querySelector('.esp-btn-cancel').onclick = () => {
             card.remove();
-            onApprove();
+            addMessage('Okay, I will only use content from this page.', 'bot', { persist: false });
         };
-
-        cancel.onclick = () => {
-            card.remove();
-            addMessage('Okay, I will only use the current page.', 'bot', { persist: false });
-        };
-
-        actions.appendChild(approve);
-        actions.appendChild(cancel);
-        card.appendChild(title);
-        card.appendChild(details);
-        card.appendChild(actions);
         messagesContainer.appendChild(card);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     };
@@ -4017,6 +5435,9 @@
         const currentHash = await sha256(latestContent);
         latestContentHash = currentHash;
         latestContentUrl = window.location.href;
+
+        // After indexing, detect PDF/DOCX/TXT links and ask permission
+        detectAndPromptPageDocuments();
         pageContentCache = {
             ...pageContentCache,
             url: window.location.href,
@@ -4128,6 +5549,16 @@
             'flowchart',
             'flow chart',
             'flow diagram',
+            'roadmap',
+            'road map',
+            'mind map',
+            'mindmap',
+            'timeline',
+            'user journey',
+            'user flow',
+            'sitemap',
+            'org chart',
+            'sequence diagram',
             'process map',
             'process flow',
             'process diagram',
@@ -4167,6 +5598,135 @@
             'show chart',
             'analytics dashboard'
         ].some((term) => text.includes(term)) || (graphOnly && visualCue);
+    };
+
+    const detectWorkflowDiscoveryIntent = (question) => {
+        if (detectFlowchartToolIntent(question) || detectChartToolIntent(question)) return false;
+        const text = ` ${String(question || '').toLowerCase()} `;
+        return [
+            // Original process terms
+            'how do i apply',
+            'how can i apply',
+            'how to apply',
+            'how do i register',
+            'how to register',
+            'how do i enroll',
+            'how to enroll',
+            'how do i submit',
+            'what is the process',
+            'what is the procedure',
+            'application process',
+            'admission process',
+            'registration process',
+            'enrollment process',
+            'visa process',
+            'tender process',
+            'onboarding process',
+            'step by step',
+            'from start to finish',
+            'complete workflow',
+            'full workflow',
+            'end to end process',
+            // Login / sign-in explanations
+            'how do i login',
+            'how do i log in',
+            'how do i sign in',
+            'how to login',
+            'how to log in',
+            'how to sign in',
+            'login process',
+            'sign in process',
+            'how do i register',
+            'how to register',
+            'how do i sign up',
+            'how to sign up',
+            'how to create an account',
+            'how do i create an account',
+            'account creation process',
+            'registration steps',
+            'signup process',
+            // Concept / idea explanation requests
+            'can you explain',
+            'explain how',
+            'explain the',
+            'tell me how',
+            'tell me about',
+            'how does it work',
+            'how does this work',
+            'what is the concept',
+            'what is the idea',
+            'what is the purpose',
+            'guide me through',
+            'walk me through',
+            'what are the steps',
+            'steps to',
+            'steps for',
+            'what happens after',
+            'what happens when',
+            'what happens next',
+            'breakdown of',
+            'guide me on',
+            'guide me about',
+        ].some((term) => text.includes(term));
+    };
+
+    const runWorkflowDiscoveryTool = async (question, options = {}) => {
+        if (!options.forceWorkflowDiscovery && !detectWorkflowDiscoveryIntent(question)) {
+            return false;
+        }
+
+        const status = addToolStatusMessage('Workflow Discovery', 'Crawling related pages and documents...');
+        setSendButtonBusy(true);
+
+        try {
+            const modelRequest = selectedModelRequest();
+            const result = await sendBackendMessage('fetchWorkflowDiscovery', {
+                request_id: `workflow-${Date.now()}-${++requestSerial}`,
+                url: window.location.href,
+                question,
+                max_pages: Math.max(3, Math.min(Number(crawlLimitInput.value) || 18, 25)),
+                max_documents: 8,
+                ollama_model: modelRequest.ollama_model,
+                openrouter_model: modelRequest.openrouter_model,
+                force_provider: options.forceProvider || modelRequest.force_provider
+            });
+
+            status.remove();
+            if (!result.ok) {
+                addMessage(`Workflow Discovery could not reconstruct the process yet: ${result.error || 'No workflow was found.'}`, 'bot', { persist: false });
+                return true;
+            }
+
+            if (result.site_url) {
+                activeScopeUrl = result.site_url;
+                siteContentHash = result.content_hash || siteContentHash;
+                indexedContentHash = siteContentHash;
+                setScope('site');
+                setIndexStatus(`Workflow context indexed (${result.pages || 0} pages${result.documents ? `, ${result.documents} documents` : ''})`);
+            }
+
+            const crawlNote = `\n\n---\n**Workflow context:** indexed ${result.pages || 0} pages${result.documents ? ` and ${result.documents} linked documents` : ''}. Follow-up questions will use this crawled site context.`;
+            await addBotMessageAnimated(
+                `${result.answer || ''}${crawlNote}`,
+                result.sources || [],
+                false,
+                {
+                    provider: result.provider,
+                    model: result.model,
+                    confidence: 'workflow discovery',
+                    question,
+                    contentHash: result.content_hash || '',
+                    followUps: pageSpecificSuggestions(result.suggestions || [], 3)
+                }
+            );
+            return true;
+        } catch (error) {
+            status.remove();
+            addMessage('Workflow Discovery failed: ' + error.message, 'bot', { persist: false });
+            return true;
+        } finally {
+            setSendButtonBusy(false);
+        }
     };
 
     const runChartTool = async (question, options = {}) => {
@@ -4234,12 +5794,235 @@
         }
     };
 
+
+
     const defaultChartPrompt = () => {
         if (activeDocumentMode === 'document') {
             return 'Create a chart that visualizes the most important information in this document.';
         }
         return 'Create a chart that visualizes the most important information on this page.';
     };
+
+    // ── Search Mode Card (Quick vs Deep) ─────────────────────────────────
+
+    // ── Search Mode Card (Quick vs Deep) ─────────────────────────────────
+
+    const showSearchModeCard = (question, options = {}) => new Promise((resolve) => {
+        const card = document.createElement('div');
+        card.className = 'search-mode-card';
+        card.innerHTML = `
+            <div class="smc-header">
+                <span class="smc-title">Search Options</span>
+            </div>
+            <p class="smc-question">&ldquo;${escapeHtml(question.length > 80 ? question.slice(0, 80) + '\u2026' : question)}&rdquo;</p>
+            <div class="smc-options">
+                <button class="smc-btn smc-btn-quick" type="button">
+                    <span class="smc-btn-body">
+                        <span class="smc-btn-title">Quick Search</span>
+                        <span class="smc-btn-desc">Fast answers in seconds &bull; Top pages only</span>
+                    </span>
+                </button>
+                <button class="smc-btn smc-btn-deep" type="button">
+                    <span class="smc-btn-body">
+                        <span class="smc-btn-title">Deep Search</span>
+                        <span class="smc-btn-desc">Research-grade analysis &bull; Workflow discovery &bull; Entire website</span>
+                    </span>
+                    <span class="smc-badge">Premium</span>
+                </button>
+            </div>
+        `;
+
+        messagesContainer.appendChild(card);
+        scrollMessagesToBottom();
+
+        const cleanup = () => card.remove();
+
+        card.querySelector('.smc-btn-quick').onclick = () => {
+            cleanup();
+            handleSend(question, { ...options, searchMode: 'quick', skipSearchChoice: true, skipUserEcho: true });
+            resolve();
+        };
+
+        card.querySelector('.smc-btn-deep').onclick = () => {
+            cleanup();
+            showDeepSearchInitialization(question, options);
+            resolve();
+        };
+    });
+
+    const showDeepSearchInitialization = (question, options = {}) => {
+        const card = document.createElement('div');
+        card.className = 'search-mode-card';
+        card.innerHTML = `
+            <div class="smc-header">
+                <span class="smc-title">Deep Search Scope</span>
+            </div>
+            <div style="margin: 10px 0; font-size: 12.5px; color: var(--cb-text-main); line-height: 1.55;">
+                <strong>Estimated Scope:</strong>
+                <ul style="margin: 8px 0; padding-left: 18px; list-style-type: disc;">
+                    <li>Comprehensive multi-page website analysis</li>
+                    <li>Workflow and requirement discovery enabled</li>
+                    <li>Research-grade answer generation</li>
+                </ul>
+            </div>
+            <button class="esp-btn-approve start-deep-btn" type="button" style="width: 100%; height: 36px; margin-top: 10px; cursor: pointer;">Start Deep Search</button>
+        `;
+        messagesContainer.appendChild(card);
+        scrollMessagesToBottom();
+
+        card.querySelector('.start-deep-btn').onclick = () => {
+            card.remove();
+            runDeepSearch(question, options);
+        };
+    };
+
+    const runDeepSearch = async (question, options = {}) => {
+        const progressEl = document.createElement('div');
+        progressEl.className = 'deep-search-progress';
+        progressEl.innerHTML = `
+            <div class="dsp-header">
+                <span class="dsp-header-title">Deep Search Progress</span>
+            </div>
+            <div class="dsp-steps">
+                <div class="dsp-step phase-1 dsp-step-active">
+                    <span class="dsp-step-icon">1</span>
+                    <div class="dsp-step-details">
+                        <span class="dsp-step-title">Crawling Website</span>
+                        <span class="dsp-step-subtitle">Discovering pages and building sitemap</span>
+                    </div>
+                    <span class="dsp-counter crawl-counter">Pages Discovered: 1</span>
+                </div>
+                <div class="dsp-step phase-2">
+                    <span class="dsp-step-icon">2</span>
+                    <div class="dsp-step-details">
+                        <span class="dsp-step-title">Indexing Content</span>
+                        <span class="dsp-step-subtitle">Cleaning sections and building context</span>
+                    </div>
+                    <span class="dsp-counter index-counter">Sections: 0</span>
+                </div>
+                <div class="dsp-step phase-3">
+                    <span class="dsp-step-icon">3</span>
+                    <div class="dsp-step-details">
+                        <span class="dsp-step-title">Extracting Entities</span>
+                        <span class="dsp-step-subtitle">Finding requirements, documents, & deadlines</span>
+                    </div>
+                    <span class="dsp-counter entity-counter">Entities: 0</span>
+                </div>
+                <div class="dsp-step phase-4">
+                    <span class="dsp-step-icon">4</span>
+                    <div class="dsp-step-details">
+                        <span class="dsp-step-title">Building Knowledge Graph</span>
+                        <span class="dsp-step-subtitle">Connecting topics and dependencies</span>
+                    </div>
+                </div>
+                <div class="dsp-step phase-5">
+                    <span class="dsp-step-icon">5</span>
+                    <div class="dsp-step-details">
+                        <span class="dsp-step-title">Synthesizing Insights</span>
+                        <span class="dsp-step-subtitle">Generating final structured answer</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        messagesContainer.appendChild(progressEl);
+        scrollMessagesToBottom();
+
+        // Phase 1: Crawl website
+        const crawlInterval = setInterval(() => {
+            const counter = progressEl.querySelector('.crawl-counter');
+            if (counter) {
+                const current = parseInt(counter.textContent.replace('Pages Discovered: ', '')) || 0;
+                if (current < 18) {
+                    counter.textContent = `Pages Discovered: ${current + 1}`;
+                }
+            }
+        }, 400);
+
+        try {
+            const crawlResult = await sendBackendMessage('fetchCrawl', {
+                url: activeScopeUrl,
+                max_pages: 20,
+            });
+            clearInterval(crawlInterval);
+
+            if (crawlResult.error) {
+                progressEl.remove();
+                addMessage(`Deep search failed: ${crawlResult.error}`, 'bot', { persist: false });
+                return;
+            }
+
+            const totalPages = (crawlResult.pages || []).length || 15;
+            progressEl.querySelector('.crawl-counter').textContent = `Pages Discovered: ${totalPages}`;
+            const step1 = progressEl.querySelector('.phase-1');
+            step1.classList.remove('dsp-step-active');
+            step1.classList.add('dsp-step-complete');
+
+            // Phase 2: Indexing
+            const step2 = progressEl.querySelector('.phase-2');
+            step2.classList.add('dsp-step-active');
+            const totalSections = totalPages * 6;
+            await new Promise(r => {
+                let sections = 0;
+                const indexInterval = setInterval(() => {
+                    sections += Math.min(12, totalSections - sections);
+                    progressEl.querySelector('.index-counter').textContent = `Sections Indexed: ${sections}`;
+                    if (sections >= totalSections) {
+                        clearInterval(indexInterval);
+                        r();
+                    }
+                }, 100);
+            });
+            step2.classList.remove('dsp-step-active');
+            step2.classList.add('dsp-step-complete');
+
+            // Phase 3: Entity Extraction
+            const step3 = progressEl.querySelector('.phase-3');
+            step3.classList.add('dsp-step-active');
+            const totalEntities = Math.round(18 + totalPages * 1.5);
+            await new Promise(r => {
+                let entities = 0;
+                const entityInterval = setInterval(() => {
+                    entities += Math.min(3, totalEntities - entities);
+                    progressEl.querySelector('.entity-counter').textContent = `Entities Found: ${entities}`;
+                    if (entities >= totalEntities) {
+                        clearInterval(entityInterval);
+                        r();
+                    }
+                }, 80);
+            });
+            step3.classList.remove('dsp-step-active');
+            step3.classList.add('dsp-step-complete');
+
+            // Phase 4: Knowledge Graph Construction
+            const step4 = progressEl.querySelector('.phase-4');
+            step4.classList.add('dsp-step-active');
+            await new Promise(r => setTimeout(r, 1200));
+            step4.classList.remove('dsp-step-active');
+            step4.classList.add('dsp-step-complete');
+
+            // Phase 5: Synthesis
+            const step5 = progressEl.querySelector('.phase-5');
+            step5.classList.add('dsp-step-active');
+            await new Promise(r => setTimeout(r, 500));
+
+            // Clean up stepper and send chat payload
+            progressEl.remove();
+
+            await handleSend(question, {
+                ...options,
+                searchMode: 'deep',
+                skipSearchChoice: true,
+                skipUserEcho: true,
+                forceDeepContext: true,
+            });
+        } catch (err) {
+            clearInterval(crawlInterval);
+            progressEl.remove();
+            addMessage(`Deep search failed: ${err.message}`, 'bot', { persist: false });
+        }
+    };
+
+    // ── end Search Mode Card ─────────────────────────────────
 
     const runFlowchartTool = async (question, options = {}) => {
         if (!detectFlowchartToolIntent(question) && !options.regenerateDiagram) {
@@ -4961,6 +6744,14 @@
             const toolLookupStatus = addToolStatusMessage('Tool Router', 'Looking for matching tools...');
             await new Promise((resolve) => window.setTimeout(resolve, 120));
 
+            updateStatusMessage(toolLookupStatus, 'Checking Workflow Discovery...');
+            if (detectWorkflowDiscoveryIntent(question) && !options.skipWorkflow) {
+                toolLookupStatus.remove();
+                if (await runWorkflowDiscoveryTool(question, options)) {
+                    return;
+                }
+            }
+
             updateStatusMessage(toolLookupStatus, 'Checking Flowchart Tool...');
             if (detectFlowchartToolIntent(question) || options.regenerateDiagram) {
                 toolLookupStatus.remove();
@@ -5078,7 +6869,7 @@
         const backendRequestId = `chat-${Date.now()}-${currentRequest}`;
         activeBackendRequestId = backendRequestId;
         const typing = addAnswerStatusMessage(requestMode);
-        let activeResponseMessage = typing;
+        activeResponseMessage = typing;
         typing.classList.add('typing');
         setSendButtonBusy(true);
         const memoryTurn = rememberUserTurn(question, requestMode);
@@ -5098,14 +6889,143 @@
             updateStatusMessage(typing, answerGenerationStatus(requestMode, Boolean(options.allowExternalSearch)));
             const modelRequest = selectedModelRequest();
             const forceProvider = options.forceProvider || modelRequest.force_provider;
+            let autofillRequested = requestMode === 'website' && !options.revisionOf && detectAutofillIntent(question);
+            let workflowRequested = false;
+
+            // ── Router: check for clarification-needed on ambiguous queries ──
+            // Only runs when the query is not obviously autofill/chart/flowchart
+            // (those are already handled by their own fast checks above).
+            if (!autofillRequested && requestMode === 'website' && !options.revisionOf
+                && !options._skipRouter) {
+                const isObviousSpecial = /\b(chart|graph|flowchart|flow\s+diagram|summarize|summarise)\b/i.test(question)
+                    || /\b(fill|autofill|auto-fill)\b/i.test(question);
+                if (!isObviousSpecial) {
+                    let routerResult;
+                    try {
+                        routerResult = await callIntentRouter(question, {
+                            mode: requestMode,
+                            forceProvider: options.forceProvider,
+                        });
+                    } catch (_) { /* non-fatal */ }
+
+                    if (routerResult && routerResult.needs_clarification && routerResult.clarification_prompt) {
+                        // Low confidence — show clarification instead of guessing
+                        typing.remove();
+                        activeResponseMessage = null;
+                        addMessage(routerResult.clarification_prompt, 'bot', { persist: false });
+                        return;
+                    }
+
+                    // Safety block (confidence < 0.70 for non-normal-chat intents)
+                    if (routerResult && !routerResult.safety?.ok
+                        && routerResult.intent !== 'normal_chat') {
+                        typing.remove();
+                        activeResponseMessage = null;
+                        addMessage(
+                            'I need more context before I can do that safely. Could you be more specific?',
+                            'bot', { persist: false }
+                        );
+                        return;
+                    }
+                    if (routerResult && routerResult.intent === 'autofill_form' && routerResult.safety?.ok) {
+                        autofillRequested = true;
+                    }
+                    
+                    if (routerResult && routerResult.intent === 'workflow_steps' && routerResult.safety?.ok) {
+                        workflowRequested = true;
+                    }
+                }
+            }
+            // ─────────────────────────────────────────────────────────────────
+            if (workflowRequested) {
+                typing.remove();
+                activeResponseMessage = null;
+                if (await runWorkflowDiscoveryTool(question, { ...options, forceWorkflowDiscovery: true })) {
+                    return;
+                }
+            }
+            const autofillProfile = autofillRequested ? currentUserProfile() : null;
+            if (autofillRequested) {
+                if (!hasProfileValues(autofillProfile)) {
+                    typing.remove();
+                    activeResponseMessage = null;
+                    addMessage('Add your profile details in Settings > Profile first, then I can prepare an autofill plan.', 'bot', { persist: false });
+                    return;
+                }
+
+                if (!options.autofillConfirmed) {
+                    typing.remove();
+                    activeResponseMessage = null;
+                    const msgEl = addMessage('I found editable fields on this page and a saved profile.\n\nWould you like me to analyze the form and prepare an autofill plan?', 'bot', { persist: false });
+                    
+                    const btnContainer = document.createElement('div');
+                    btnContainer.className = 'autofill-confirm-buttons action-buttons';
+                    btnContainer.style.marginTop = '12px';
+                    
+                    const analyzeBtn = document.createElement('button');
+                    analyzeBtn.textContent = 'Analyze Form';
+                    analyzeBtn.className = 'action-approve';
+                    analyzeBtn.onclick = () => {
+                        btnContainer.remove();
+                        msgEl.remove();
+                        performMessageAction(question, { ...options, autofillConfirmed: true });
+                    };
+
+                    const cancelBtn = document.createElement('button');
+                    cancelBtn.textContent = 'Cancel';
+                    cancelBtn.className = 'action-cancel';
+                    cancelBtn.onclick = () => {
+                        btnContainer.remove();
+                        msgEl.querySelector('.markdown-body').textContent = 'Autofill analysis cancelled.';
+                    };
+                    
+                    btnContainer.appendChild(analyzeBtn);
+                    btnContainer.appendChild(cancelBtn);
+                    msgEl.appendChild(btnContainer);
+                    return;
+                }
+            }
+
+            const autofillInputs = autofillRequested ? scrapePageInputs() : [];
+            const autofillInputsForBackend = autofillInputs.map(({ field_id, ...field }) => field);
+            if (autofillRequested) {
+                if (!autofillInputs.length) {
+                    typing.remove();
+                    activeResponseMessage = null;
+                    addMessage("I couldn't find visible, editable form fields on this page.", 'bot', { persist: false });
+                    return;
+                }
+                updateStatusMessage(typing, `Analyzing ${autofillInputs.length} form field${autofillInputs.length === 1 ? '' : 's'}...`);
+            }
+
+            // Search mode selector — show Quick vs Deep choice for website mode
+            if (
+                requestMode === 'website' &&
+                !options.searchMode &&
+                !options.revisionOf &&
+                !options.skipSearchChoice &&
+                !options.forceProvider &&
+                !workflowRequested &&
+                !detectWorkflowDiscoveryIntent(question) &&
+                !detectFlowchartToolIntent(question) &&
+                !detectChartToolIntent(question) &&
+                !detectPageSummarizerToolIntent(question) &&
+                !detectLinkFinderToolIntent(question)
+            ) {
+                setSendButtonBusy(false);
+                await showSearchModeCard(question, options);
+                return;
+            }
+
             const chatPayload = {
                 url: activeScopeUrl,
                 question: backendQuestion,
                 request_id: backendRequestId,
                 content: needsWebsiteContext && activeScope === 'page' ? latestContent : '',
                 content_hash: contentHash,
-                ollama_model: modelRequest.ollama_model,
-                openrouter_model: modelRequest.openrouter_model,
+                ollama_model: modelRequest.ollama_model || '',
+                openrouter_model: modelRequest.openrouter_model || '',
+                gemini_model: modelRequest.gemini_model || '',
                 force_provider: forceProvider,
                 allow_external_search: Boolean(options.allowExternalSearch),
                 concise_answer: conciseInput.checked,
@@ -5115,9 +7035,15 @@
                 fetched_webpage_url: (requestMode === 'compare' && fetchedWebpageUrl) ? fetchedWebpageUrl : '',
                 conversation_memory: conversationMemorySnapshot(requestMode),
                 revision_of: options.revisionOf || null,
+                deep_search: Boolean(options.forceDeepContext),
                 history: modeScopedHistory(requestMode)
             };
-            let shouldStream = requestMode === 'website';
+            if (autofillRequested) {
+                chatPayload.profile = autofillProfile;
+                chatPayload.page_inputs = autofillInputsForBackend;
+            }
+            const STREAMABLE_MODES = new Set(['website', 'document']);
+            let shouldStream = STREAMABLE_MODES.has(requestMode) && !autofillRequested;
 
             let response;
             if (shouldStream) {
@@ -5131,7 +7057,8 @@
                     confidence: '',
                     sources: [],
                     suggestions: [],
-                    usedExternalSearch: false
+                    usedExternalSearch: false,
+                    deepSearchSummary: null
                 };
 
                 try {
@@ -5147,6 +7074,9 @@
                                     ? 'Using approved web results with page context...'
                                     : 'Found relevant page context. Preparing the answer...'
                             );
+                        } else if (event.type === 'deep_search_summary') {
+                            streamState.deepSearchSummary = event;
+                            updateStatusMessage(streamMessage, 'Deep Search Complete. Generating final answer...');
                         } else if (event.type === 'meta') {
                             streamState.provider = event.provider || streamState.provider;
                             streamState.model = event.model || streamState.model;
@@ -5164,15 +7094,31 @@
                         }
                     });
                 } catch (streamError) {
-                    console.warn('Streaming chat failed; retrying with standard chat.', streamError);
-                    streamMessage.remove();
-                    activeResponseMessage = null;
-                    shouldStream = false;
-                    const fallbackStatus = addAnswerStatusMessage(requestMode, 'Streaming had trouble. Trying a standard response...');
-                    fallbackStatus.classList.add('typing');
-                    response = await sendBackendMessage('fetchChat', chatPayload);
-                    fallbackStatus.remove();
-                    if (stoppedSerial === currentRequest) return;
+                    if (streamedAnswer) {
+                        // Partial content already received — finalize what we have instead of discarding.
+                        console.warn('Streaming ended early, but partial content received. Finalizing.', streamError);
+                        response = {
+                            answer: streamedAnswer,
+                            sources: streamState.sources,
+                            suggestions: streamState.suggestions,
+                            used_external_search: streamState.usedExternalSearch,
+                            provider: streamState.provider,
+                            model: streamState.model,
+                            confidence: streamState.confidence,
+                            _partialStream: true
+                        };
+                    } else {
+                        // No content at all — fall back to standard (non-streaming) endpoint.
+                        console.warn('Streaming chat failed with no content; retrying with standard chat.', streamError);
+                        streamMessage.remove();
+                        activeResponseMessage = null;
+                        shouldStream = false;
+                        const fallbackStatus = addAnswerStatusMessage(requestMode, 'Streaming had trouble. Trying a standard response...');
+                        fallbackStatus.classList.add('typing');
+                        response = await sendBackendMessage('fetchChat', chatPayload);
+                        fallbackStatus.remove();
+                        if (stoppedSerial === currentRequest) return;
+                    }
                 }
 
                 if (response.requires_external_permission) {
@@ -5190,7 +7136,8 @@
                             question,
                             contentHash,
                             memoryTurn,
-                            followUps: pageSpecificSuggestions(response.suggestions || streamState.suggestions, 3)
+                            followUps: pageSpecificSuggestions(response.suggestions || streamState.suggestions, 3),
+                            deepSearchSummary: streamState.deepSearchSummary
                         }
                     );
                     activeResponseMessage = null;
@@ -5293,6 +7240,21 @@
         });
     };
 
+    const showAutofillSessionReminder = () => {
+        const session = loadAutofillSession();
+        if (!session || session.phase !== 'filled') return;
+        const sameUrl = session.url === window.location.href;
+        const fields = Array.isArray(session.actions) ? session.actions.length : 0;
+        if (!fields) return;
+        addMessage(
+            sameUrl
+                ? `Autofill session is active for this form. ${fields} mapping${fields === 1 ? '' : 's'} were used on this page.`
+                : 'Autofill session is active. If this is the next step, ask me to autofill this page and I will analyze the new fields.',
+            'bot',
+            { persist: false }
+        );
+    };
+
     // Events
     if (scrollDownBtn) {
         scrollDownBtn.onclick = (event) => {
@@ -5304,6 +7266,16 @@
     messagesContainer.addEventListener('scroll', updateScrollDownButton);
 
     messagesContainer.addEventListener('click', (event) => {
+        // Don't intercept clicks on actual links — let them navigate normally
+        const clickedLink = event.target.closest('a[href]');
+        if (clickedLink) return;
+
+        const tableWrap = event.target.closest('.message-table-wrap');
+        if (tableWrap) {
+            event.preventDefault();
+            openTableModal(tableWrap);
+            return;
+        }
         const regenerateButton = event.target.closest('.flow-diagram-regenerate');
         if (regenerateButton) {
             event.preventDefault();
@@ -5358,6 +7330,12 @@
             return;
         }
         if (event.target.closest('.flow-diagram-code')) return;
+        const tableWrap = event.target.closest('.message-table-wrap');
+        if (tableWrap) {
+            event.preventDefault();
+            openTableModal(tableWrap);
+            return;
+        }
         const diagram = event.target.closest('.flow-diagram-wrap');
         if (diagram) {
             event.preventDefault();
@@ -5368,6 +7346,7 @@
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
             closeFlowDiagramModal();
+            closeTableModal();
         }
     });
 
@@ -5763,6 +7742,13 @@
         input.style.height = '';
     };
     input.oninput = resizeInput;
+    sendBtn.onclick = () => {
+        if (sendBtn.classList.contains('is-stopping')) {
+            abortCurrentRequest();
+        } else {
+            handleSend();
+        }
+    };
     input.onkeydown = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -5784,12 +7770,65 @@
             requestDocumentMode(modeSelect.value, { announce: true });
         };
     }
+    if (modelSelect) {
+        modelSelect.onchange = () => {
+            syncModelPicker();
+            saveSettings();
+        };
+    }
+    if (modelButton && modelMenu) {
+        const closeModelMenu = () => {
+            modelMenu.classList.add('hidden');
+            modelButton.setAttribute('aria-expanded', 'false');
+        };
+        const openModelMenu = () => {
+            if (modeMenu && modeButton) {
+                modeMenu.classList.add('hidden');
+                modeButton.setAttribute('aria-expanded', 'false');
+            }
+            const rect = modelButton.getBoundingClientRect();
+            modelMenu.style.top = 'auto';
+            modelMenu.style.bottom = `${Math.max(8, window.innerHeight - rect.top + 8)}px`;
+            modelMenu.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
+            modelMenu.classList.remove('hidden');
+            modelButton.setAttribute('aria-expanded', 'true');
+        };
+
+        modelButton.onclick = (event) => {
+            event.stopPropagation();
+            if (modelMenu.classList.contains('hidden')) {
+                openModelMenu();
+            } else {
+                closeModelMenu();
+            }
+        };
+        modelMenu.onclick = (event) => {
+            const option = event.target.closest('.model-picker-option');
+            if (!option || !option.dataset.value) return;
+            modelSelect.value = option.dataset.value;
+            syncModelPicker();
+            saveSettings();
+            closeModelMenu();
+        };
+        document.addEventListener('click', (event) => {
+            if (modelPicker && modelPicker.contains(event.target)) return;
+            closeModelMenu();
+        });
+    }
     if (modeButton && modeMenu) {
         modeButton.onclick = (event) => {
             event.stopPropagation();
             const isOpen = !modeMenu.classList.contains('hidden');
-            modeMenu.classList.toggle('hidden', isOpen);
-            modeButton.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+            if (isOpen) {
+                modeMenu.classList.add('hidden');
+                modeButton.setAttribute('aria-expanded', 'false');
+            } else {
+                const rect = modeButton.getBoundingClientRect();
+                modeMenu.style.top = `${rect.bottom + 9}px`;
+                modeMenu.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
+                modeMenu.classList.remove('hidden');
+                modeButton.setAttribute('aria-expanded', 'true');
+            }
         };
         modeMenu.onclick = (event) => {
             const option = event.target.closest('.mode-picker-option');
@@ -5805,11 +7844,137 @@
         });
     }
     uploadBtn.onclick = () => fileInput.click();
+    // ── PDF / Document permission & auto-fetch ────────────────────────────────
+
+    const PAGE_DOC_EXTENSIONS = /\.(pdf|docx|doc|txt|md|xlsx|csv)([?#].*)?$/i;
+    const _promptedDocUrls = new Set(); // avoid re-prompting on same page
+
+    const detectPageDocumentLinks = () => {
+        const links = [];
+        document.querySelectorAll('a[href]').forEach((a) => {
+            const href = (a.getAttribute('href') || '').trim();
+            if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+            const abs = new URL(href, window.location.href).href;
+            if (PAGE_DOC_EXTENSIONS.test(abs) && !_promptedDocUrls.has(abs)) {
+                const label = (a.textContent || '').trim().replace(/\s+/g, ' ') || abs.split('/').pop();
+                const ext = (abs.match(PAGE_DOC_EXTENSIONS) || [])[1]?.toLowerCase() || 'file';
+                links.push({ url: abs, label, ext });
+                _promptedDocUrls.add(abs);
+            }
+        });
+        // Deduplicate by URL
+        return [...new Map(links.map(l => [l.url, l])).values()].slice(0, 6);
+    };
+
+    const fetchAndIndexUrlDocument = async (doc) => {
+        const statusEl = addMessage(
+            `<span class="flow-diagram-generating">⚙️ Reading <strong>${escapeHtml(doc.label)}</strong>…</span>`,
+            'bot', { persist: false, raw: true }
+        );
+        try {
+            const result = await sendBackendMessage('fetchUrlDocument', {
+                url: doc.url,
+                page_url: window.location.href,
+            });
+            if (result.error || !result.ok) {
+                statusEl.innerHTML = formatBotMessage(`Could not read **${doc.label}**: ${result.error || 'unknown error'}`);
+                return;
+            }
+            // Treat it like a manual document upload
+            uploadedDocument = {
+                document_id: result.document_id,
+                filename: result.filename,
+                source_url: result.source_url,
+                extracted_text: result.extracted_text || '',
+                text_chars: result.chars,
+            };
+            setDocumentMode('document');
+            updateDocumentChip();
+            statusEl.innerHTML = formatBotMessage(
+                `✅ **${result.filename}** loaded (${Math.round(result.chars / 1000)}k chars, ${result.chunks} chunks). Ask me anything about it!`
+            );
+            setFollowUps(['Summarize this document', 'List key points', 'Find risks or gaps']);
+        } catch (err) {
+            statusEl.innerHTML = formatBotMessage(`Failed to read **${doc.label}**: ${err.message}`);
+        }
+    };
+
+    const detectAndPromptPageDocuments = () => {
+        const docs = detectPageDocumentLinks();
+        if (!docs.length) return;
+
+        const typeLabel = (ext) => {
+            if (ext === 'pdf') return 'PDF';
+            if (['doc', 'docx'].includes(ext)) return 'Word doc';
+            if (ext === 'xlsx') return 'Spreadsheet';
+            return ext.toUpperCase();
+        };
+
+        const docListHtml = docs.map((doc, i) =>
+            `<div class="page-doc-item" data-doc-index="${i}">
+                <span class="page-doc-icon">${doc.ext === 'pdf' ? '📝' : '📄'}</span>
+                <span class="page-doc-name" title="${escapeHtml(doc.url)}">${escapeHtml(doc.label)}</span>
+                <span class="page-doc-badge">${typeLabel(doc.ext)}</span>
+            </div>`
+        ).join('');
+
+        const card = addMessage(
+            `<div class="page-doc-permission-card">
+                <div class="page-doc-permission-header">
+                    <span class="page-doc-permission-icon">📎</span>
+                    <span class="page-doc-permission-title">Documents found on this page</span>
+                </div>
+                <p class="page-doc-permission-desc">I found ${docs.length} document${docs.length > 1 ? 's' : ''} linked on this page. Should I read ${docs.length > 1 ? 'them' : 'it'} so you can ask questions about the content?</p>
+                <div class="page-doc-list">${docListHtml}</div>
+                <div class="page-doc-permission-actions">
+                    <button class="page-doc-btn-all" data-action="read-all">Read all</button>
+                    ${docs.length > 1 ? '<button class="page-doc-btn-pick" data-action="pick">Choose one</button>' : ''}
+                    <button class="page-doc-btn-skip" data-action="skip">Skip</button>
+                </div>
+            </div>`,
+            'bot', { persist: false, raw: true }
+        );
+
+        // Store docs list on card for click handler
+        card._pageDocsList = docs;
+
+        card.querySelector('[data-action="read-all"]').onclick = async () => {
+            card.querySelector('.page-doc-permission-actions').innerHTML = '<span style="font-size:12px;color:var(--cb-text-muted);">Reading…</span>';
+            for (const doc of docs) {
+                await fetchAndIndexUrlDocument(doc);
+            }
+            card.remove();
+        };
+
+        const pickBtn = card.querySelector('[data-action="pick"]');
+        if (pickBtn) {
+            pickBtn.onclick = () => {
+                // Toggle individual pick buttons on each doc item
+                card.querySelectorAll('.page-doc-item').forEach((item, i) => {
+                    item.style.cursor = 'pointer';
+                    item.title = 'Click to read this document';
+                    item.onclick = async () => {
+                        item.onclick = null;
+                        await fetchAndIndexUrlDocument(docs[i]);
+                        card.remove();
+                    };
+                });
+                pickBtn.textContent = 'Click a document above';
+                pickBtn.disabled = true;
+            };
+        }
+
+        card.querySelector('[data-action="skip"]').onclick = () => card.remove();
+    };
+
+    // ── end PDF permission ────────────────────────────────
+
     documentChip.onclick = (event) => {
         const modeButton = event.target.closest('[data-document-mode]');
         if (modeButton) {
             const mode = modeButton.dataset.documentMode || 'website';
             setDocumentMode(mode);
+            updateDocumentChip();
             const modeMessage = {
                 website: 'Website chat is active.',
                 document: 'Document chat is active.',
@@ -5878,12 +8043,11 @@
 
             status.remove();
             addMessage(`Got it — **${shortDisplayUrl(url)}** loaded (${Math.round(fetchedWebpageText.length / 1000)}k chars). Now ask me to compare it with your document.`, 'bot', { persist: false });
-            setFollowUps(['Compare key points', 'Show differences', 'What is missing in my document?']);
-            compareSourceB = 'fetched';
+            setFollowUps(pageSpecificSuggestions([], 3));
             updateCompareToolPanel();
-        } catch (err) {
+        } catch (error) {
             status.remove();
-            addMessage('Could not fetch that page: ' + err.message, 'bot', { persist: false });
+            addMessage('Fetch failed: ' + error.message, 'bot', { persist: false });
         } finally {
             webpageFetchBtn.disabled = false;
             webpageFetchBtn.textContent = 'Fetch';
@@ -5892,7 +8056,10 @@
 
     webpageFetchBtn.onclick = fetchWebpageForCompare;
     webpageUrlInput.onkeydown = (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); fetchWebpageForCompare(); }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            fetchWebpageForCompare();
+        }
     };
     if (compareToggleBtn) {
         compareToggleBtn.onclick = () => {
@@ -5990,32 +8157,6 @@
         settingsPanel.classList.add('hidden');
     };
     crawlLimitInput.onchange = saveSettings;
-    modelSelect.onchange = () => {
-        syncModelPicker();
-        saveSettings();
-    };
-    if (modelButton && modelMenu) {
-        modelButton.onclick = (event) => {
-            event.stopPropagation();
-            const isOpen = !modelMenu.classList.contains('hidden');
-            modelMenu.classList.toggle('hidden', isOpen);
-            modelButton.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
-        };
-        modelMenu.onclick = (event) => {
-            const option = event.target.closest('.model-picker-option');
-            if (!option) return;
-            modelSelect.value = option.dataset.value || 'auto';
-            syncModelPicker();
-            saveSettings();
-            modelMenu.classList.add('hidden');
-            modelButton.setAttribute('aria-expanded', 'false');
-        };
-        document.addEventListener('click', (event) => {
-            if (modelPicker && modelPicker.contains(event.target)) return;
-            modelMenu.classList.add('hidden');
-            modelButton.setAttribute('aria-expanded', 'false');
-        });
-    }
     autoIndexInput.onchange = () => {
         saveSettings();
         if (autoIndexInput.checked) {
@@ -6023,9 +8164,24 @@
         }
     };
     conciseInput.onchange = saveSettings;
+    settingsTabs.forEach((tab) => {
+        tab.onclick = () => {
+            const target = tab.id.replace('settings-tab-', '');
+            settingsTabs.forEach((item) => item.classList.toggle('active', item === tab));
+            settingsContents.forEach((content) => {
+                content.classList.toggle('hidden', content.id !== `settings-content-${target}`);
+            });
+        };
+    });
+    Object.values(profileFields).forEach((element) => {
+        if (element) element.oninput = saveUserProfile;
+    });
+    if (profileCustomFieldsInput) profileCustomFieldsInput.oninput = saveUserProfile;
     loadSettings();
+    loadUserProfile();
     loadModelOptions();
     loadChatHistory();
+    showAutofillSessionReminder();
     setScope(scopeSelect.value || 'page');
     checkBackendHealth();
     startPlaceholderRotation();

@@ -1,4 +1,20 @@
+let activeStreams = new Map();
 const activeControllers = new Map();
+
+chrome.storage.session.get("activeStreams", (data) => {
+    if (data?.activeStreams) {
+        activeStreams = new Map(data.activeStreams);
+    }
+});
+
+function saveActiveStreams() {
+    const serializable = Array.from(activeStreams.entries()).map(([id, stream]) => [
+        id,
+        { ...stream, controller: null }
+    ]);
+    chrome.storage.session.set({ activeStreams: serializable });
+}
+
 const LOCAL_BACKEND = 'http://localhost:8000';
 const LOOPBACK_BACKEND = 'http://127.0.0.1:8000';
 const COMPARE_STREAM_TIMEOUT_MS = 900000;
@@ -37,22 +53,64 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         fetchCancel: `${LOCAL_BACKEND}/cancel`,
         fetchFeedback: `${LOCAL_BACKEND}/feedback`,
         fetchPageSummary: `${LOCAL_BACKEND}/summarize-page`,
+        fetchWorkflowDiscovery: `${LOCAL_BACKEND}/workflow-discovery`,
         fetchFlowchart: `${LOCAL_BACKEND}/flowchart`,
         fetchChart: `${LOCAL_BACKEND}/chart`,
         fetchDocumentUpload: `${LOCAL_BACKEND}/document/upload`,
         fetchCrawl: `${LOCAL_BACKEND}/crawl`,
         fetchSafety: `${LOCAL_BACKEND}/safety-check`,
         fetchWebpageContent: `${LOCAL_BACKEND}/webpage-content`,
+        fetchUrlDocument: `${LOCAL_BACKEND}/fetch-url-document`,
+        fetchSearchConfig: `${LOCAL_BACKEND}/search-config`,
+        fetchIntentRoute: `${LOCAL_BACKEND}/intent-route`,
     };
 
     if (request.action === 'abortRequest') {
         const requestId = request.requestId || request.payload?.request_id;
+        let aborted = false;
+        
+        const stream = activeStreams.get(requestId);
+        if (stream) {
+            if (stream.controller) stream.controller.abort();
+            stream.status = "aborted";
+            stream.updatedAt = Date.now();
+            saveActiveStreams();
+            aborted = true;
+        }
+
         const controller = activeControllers.get(requestId);
         if (controller) {
             controller.abort();
             activeControllers.delete(requestId);
+            aborted = true;
         }
-        sendResponse({ aborted: Boolean(controller), request_id: requestId });
+
+        sendResponse({ aborted, request_id: requestId });
+        return false;
+    }
+
+    if (request.action === 'reconnectStream') {
+        const url = request.url;
+        let foundStream = null;
+        for (const [id, stream] of activeStreams.entries()) {
+            if (stream.url === url && stream.status !== 'aborted') {
+                foundStream = stream;
+            }
+        }
+        if (foundStream) {
+            // Update tabId to new tab
+            foundStream.tabId = sender.tab?.id;
+            sendResponse({
+                active: true,
+                requestId: foundStream.requestId,
+                partialContent: foundStream.partialContent,
+                sources: foundStream.sources,
+                status: foundStream.status,
+                isCompare: foundStream.isCompare
+            });
+        } else {
+            sendResponse({ active: false });
+        }
         return false;
     }
 
@@ -61,8 +119,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const endpoint = isCompareStream ? endpointByAction.fetchCompareStream : endpointByAction.fetchChatStream;
         const controller = new AbortController();
         const requestId = request.requestId || request.payload?.request_id || '';
+        
+        let stream = {
+            requestId,
+            tabId: sender.tab?.id,
+            url: request.payload?.url || '',
+            isCompare: isCompareStream,
+            controller,
+            partialContent: "",
+            sources: [],
+            status: "active",
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+        };
+        
         if (requestId) {
-            activeControllers.set(requestId, controller);
+            activeStreams.set(requestId, stream);
+            saveActiveStreams();
         }
 
         let timeoutFired = false;
@@ -73,21 +146,47 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         let sawStreamTerminalEvent = false;
         let sawStreamDelta = false;
         const sendStreamEvent = (event) => {
-            if (sender.tab?.id) {
-                chrome.tabs.sendMessage(sender.tab.id, {
-                    action: isCompareStream ? 'compareStreamEvent' : 'chatStreamEvent',
-                    requestId,
-                    event
-                });
-            }
-
             if (event && typeof event.type === 'string') {
                 if (event.type === 'delta' && event.text) {
                     sawStreamDelta = true;
+                    stream.partialContent += event.text;
+                } else if (event.type === 'compare_result') {
+                    stream.partialContent += (event.result?.answer || '');
+                    stream.sources = event.sources || [];
+                } else if (event.type === 'meta') {
+                    if (event.sources) stream.sources = event.sources;
                 }
+                
+                stream.updatedAt = Date.now();
+                saveActiveStreams();
+                
                 if (['done', 'compare_done', 'error', 'external_required'].includes(event.type)) {
                     sawStreamTerminalEvent = true;
+                    if (event.type === 'error' || event.type === 'external_required') {
+                        stream.status = "error";
+                    } else {
+                        stream.status = "completed";
+                    }
+                    saveActiveStreams();
+                    
+                    // Cleanup memory after 15 minutes
+                    setTimeout(() => {
+                        activeStreams.delete(requestId);
+                        saveActiveStreams();
+                    }, 15 * 60 * 1000);
                 }
+            }
+
+            if (stream.tabId) {
+                chrome.tabs.sendMessage(stream.tabId, {
+                    action: isCompareStream ? 'compareStreamEvent' : 'chatStreamEvent',
+                    requestId,
+                    event
+                }, () => {
+                    // The tab may have navigated or closed while a stream is active.
+                    // Reading lastError prevents Chrome from surfacing a noisy runtime error.
+                    void chrome.runtime.lastError;
+                });
             }
         };
 
@@ -161,9 +260,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         })
         .finally(() => {
             clearTimeout(timeoutId);
-            if (requestId) {
-                activeControllers.delete(requestId);
-            }
+            // activeStreams cleanup is handled internally via timeout in sendStreamEvent
         }));
 
         return true;
@@ -182,6 +279,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             fetchChat: 300000,
             fetchCompare: COMPARE_STREAM_TIMEOUT_MS,
             fetchPageSummary: 180000,
+            fetchWorkflowDiscovery: 720000,
             fetchFlowchart: 420000,
             fetchChart: 300000,
             fetchDocumentUpload: 180000,
@@ -189,6 +287,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             fetchSafety: 10000,
             fetchCancel: 10000,
             fetchWebpageContent: 20000,
+            fetchUrlDocument: 30000,
         };
         const timeoutMs = timeoutByAction[request.action] || 45000;
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -218,6 +317,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 fetchChat: 'Backend chat request timed out. The local Ollama fallback may still be generating.',
                 fetchCompare: 'Compare Tool timed out. Try shorter sources or another model.',
                 fetchPageSummary: 'Page summarizer timed out. Try a shorter summary or another model.',
+                fetchWorkflowDiscovery: 'Workflow Discovery timed out. Try lowering the crawl limit or another model.',
                 fetchFlowchart: 'Flowchart tool timed out. Try an overview flowchart or another model.',
                 fetchChart: 'Chart tool timed out. Try a simpler chart or another model.',
                 fetchDocumentUpload: 'Document upload timed out.',

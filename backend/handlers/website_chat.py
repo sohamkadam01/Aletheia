@@ -46,13 +46,14 @@ def external_permission_response(
     retrieval: dict,
     retrieval_question: str,
     retrieval_confidence: str,
+    search_provider_label: str = "the web (Tavily)",
 ) -> dict:
     return {
-        "answer": "I could not find enough information on the current page. I can search DuckDuckGo if you approve.",
+        "answer": f"I could not find enough information on the current page. I can search {search_provider_label} if you approve.",
         "requires_external_permission": True,
         "confidence": retrieval_confidence,
         "sources": retrieval.get("sources", []),
-        "suggestions": ["Use DuckDuckGo", "Ask about this page", "Summarize this page"],
+        "suggestions": ["Search the web", "Ask about this page", "Summarize this page"],
         "used_external_search": False,
         "metrics": {
             "answer_time_ms": answer_time_ms,

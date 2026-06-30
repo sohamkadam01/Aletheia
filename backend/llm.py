@@ -1,6 +1,7 @@
 import re
 import json
 import threading
+from unidecode import unidecode
 from llm_providers import (
     OLLAMA_API_URL,
     OLLAMA_MODEL,
@@ -9,10 +10,14 @@ from llm_providers import (
     OPENROUTER_MODELS,
     OPENROUTER_MAX_TOKENS,
     OPENROUTER_TIMEOUT_SECONDS,
+    GEMINI_MODEL,
     cancelled as _cancelled,
     clean_openrouter_response as _clean_openrouter_response,
+    generate_with_gemini as _generate_with_gemini,
     generate_with_ollama as _generate_with_ollama,
+    has_gemini as _has_gemini,
     has_openrouter_key as _has_openrouter_key,
+    list_gemini_models,
     list_ollama_models,
     list_openrouter_models,
     mark_openrouter_unavailable as _mark_openrouter_unavailable,
@@ -23,11 +28,13 @@ from llm_providers import (
     openrouter_headers as _openrouter_headers,
     openrouter_payload as _openrouter_payload,
     read_openrouter_stream as _read_openrouter_stream,
+    resolve_gemini_model as _resolve_gemini_model,
     resolve_ollama_model as _resolve_ollama_model,
     resolve_openrouter_models as _resolve_openrouter_models,
     session,
     short_error_body as _short_error_body,
     should_skip_openrouter_after_response as _should_skip_openrouter_after_response,
+    stream_with_gemini as _stream_with_gemini,
 )
 from prompts.auxiliary import (
     build_external_search_check_prompt,
@@ -72,6 +79,10 @@ def normalize_model_text(text: str) -> str:
     value = str(text or "")
     for broken, fixed in BROKEN_UTF8_REPLACEMENTS.items():
         value = value.replace(broken, fixed)
+    
+    # Remove non-ASCII unicode symbols
+    value = unidecode(value)
+    
     return value
 
 
@@ -121,6 +132,8 @@ def _build_answer_prompt(
     confidence: str = "high",
     feedback_guidance: str = "",
     concise_answer: bool = False,
+    document_mode: str = "website",
+    deep_search: bool = False,
 ) -> str:
     return build_stream_chat_prompt(
         context=context,
@@ -130,6 +143,8 @@ def _build_answer_prompt(
         confidence=confidence,
         feedback_guidance=feedback_guidance,
         concise_answer=concise_answer,
+        document_mode=document_mode,
+        deep_search=deep_search,
     )
 
 
@@ -284,25 +299,28 @@ def stream_answer(
     external_context: str = None,
     ollama_model: str = None,
     openrouter_model: str = None,
+    gemini_model: str = None,
     confidence: str = "high",
     feedback_guidance: str = "",
     force_provider: str = "",
     concise_answer: bool = False,
     cancel_event=None,
+    document_mode: str = "website",
+    deep_search: bool = False,
 ):
-    prompt = _build_answer_prompt(context, question, history, external_context, confidence, feedback_guidance, concise_answer)
+    prompt = _build_answer_prompt(context, question, history, external_context, confidence, feedback_guidance, concise_answer, document_mode, deep_search)
     fallback_reason = ""
     provider_preference = (force_provider or "").lower()
     is_flowchart = is_flowchart_request(question)
     budgets = _effective_budgets(is_flowchart=is_flowchart, is_compare=False)
 
-    if provider_preference != "ollama" and _openrouter_available():
+    if provider_preference != "ollama" and _openrouter_available() and provider_preference != "gemini":
         headers = _openrouter_headers()
         for model in _resolve_openrouter_models(openrouter_model):
             payload = _openrouter_payload(
                 model,
                 prompt,
-                "Answer naturally using only the provided webpage context. Use short paragraph-first formatting, use numbered lists for ordered steps/reasons/phases where helpful, bold important key terms with markdown, cite source labels, and use plain ASCII punctuation only.",
+                "Answer naturally using only the provided webpage context. Use short paragraph-first formatting, use numbered lists for ordered steps/reasons/phases where helpful, bold important key terms with markdown, and cite source labels.",
                 stream=True
             )
             payload["max_tokens"] = budgets["max_tokens"]
@@ -350,6 +368,37 @@ def stream_answer(
         yield {"type": "done", "provider": "OpenRouter", "model": openrouter_model or ""}
         return
 
+    # ── Gemini streaming fallback ─────────────────────────────────────────
+    if provider_preference not in ("ollama",) and _has_gemini():
+        selected_gemini_model = _resolve_gemini_model(gemini_model)
+        gemini_system = (
+            "You are a helpful website assistant. Answer naturally using the provided context. "
+            "Use markdown. Bold key terms. Cite sources."
+        )
+        try:
+            yielded_any = False
+            yield {"type": "meta", "provider": "Gemini", "model": selected_gemini_model, "fallback_reason": fallback_reason}
+            for chunk in _stream_with_gemini(
+                prompt,
+                max_tokens=budgets["max_tokens"],
+                system_message=gemini_system,
+                cancel_event=cancel_event,
+                model=selected_gemini_model,
+            ):
+                if _cancelled(cancel_event):
+                    break
+                text = normalize_model_text(chunk)
+                if text:
+                    yield {"type": "delta", "text": text}
+                    yielded_any = True
+            if yielded_any:
+                yield {"type": "done", "provider": "Gemini", "model": selected_gemini_model}
+                return
+            fallback_reason = "Gemini returned no content."
+        except Exception as e:
+            fallback_reason = f"Gemini stream failed: {e}"
+            print(fallback_reason)
+
     if not _ollama_enabled():
         yield {"type": "meta", "provider": "none", "model": "", "fallback_reason": fallback_reason}
         yield {"type": "delta", "text": "The AI service is temporarily unavailable. Please try again in a moment."}
@@ -363,15 +412,19 @@ def stream_answer(
             "num_predict": budgets["num_predict"],
             "num_ctx": budgets["num_ctx"],
         }
+        # Use a (connect, read) timeout tuple so each iter_lines() chunk read also
+        # has a deadline — a scalar timeout only covers the initial connection.
+        ollama_timeout = (10, OLLAMA_TIMEOUT_SECONDS)
         response = session.post(
             f"{OLLAMA_API_URL}/api/generate",
             json=_ollama_payload(prompt, selected_ollama_model, options_override=ollama_opts),
-            timeout=OLLAMA_TIMEOUT_SECONDS,
+            timeout=ollama_timeout,
             stream=True
         )
         if response.status_code != 200:
             yield {"type": "delta", "text": "The local model failed while generating an answer."}
         else:
+            generated_any = False
             for line in response.iter_lines(decode_unicode=True):
                 if _cancelled(cancel_event):
                     response.close()
@@ -384,10 +437,17 @@ def stream_answer(
                     continue
                 if data.get("response"):
                     yield {"type": "delta", "text": normalize_model_text(data["response"])}
+                    generated_any = True
                 if data.get("done"):
                     break
+            if not generated_any:
+                yield {"type": "delta", "text": "The local model did not generate a response. It may still be loading — please try again in a moment."}
     except Exception as e:
-        yield {"type": "delta", "text": f"All models failed. Last error from Ollama: {str(e)}"}
+        err_type = type(e).__name__
+        if "Timeout" in err_type or "timeout" in str(e).lower():
+            yield {"type": "delta", "text": "The local Ollama model timed out. It may be loading a large model or under heavy load — please try again."}
+        else:
+            yield {"type": "delta", "text": "The local Ollama model encountered an error. Please ensure Ollama is running and the model is available."}
     yield {"type": "done", "provider": "Ollama", "model": selected_ollama_model}
 
 
@@ -398,12 +458,14 @@ def generate_answer(
     external_context: str = None,
     ollama_model: str = None,
     openrouter_model: str = None,
+    gemini_model: str = None,
     confidence: str = "high",
     feedback_guidance: str = "",
     force_provider: str = "",
     concise_answer: bool = False,
     cancel_event=None,
     document_mode: str = "website",
+    deep_search: bool = False,
 ) -> dict:
     prompt = build_chat_prompt(
         context=context,
@@ -413,6 +475,8 @@ def generate_answer(
         confidence=confidence,
         feedback_guidance=feedback_guidance,
         concise_answer=concise_answer,
+        document_mode=document_mode,
+        deep_search=deep_search,
     )
 
     is_flowchart = is_flowchart_request(question)
@@ -424,7 +488,7 @@ def generate_answer(
     if _cancelled(cancel_event):
         return _answer_result("", "cancelled", "", "Request cancelled.")
 
-    if provider_preference != "ollama" and _openrouter_available():
+    if provider_preference != "ollama" and _openrouter_available() and provider_preference != "gemini":
         headers = _openrouter_headers()
 
         for model in _resolve_openrouter_models(openrouter_model):
@@ -434,7 +498,7 @@ def generate_answer(
             payload = _openrouter_payload(
                 model,
                 prompt,
-                "You are a friendly website and document assistant. Answer in short clear paragraphs using the provided context, compare website and document sections when asked, bold important key terms with markdown, cite source labels, and use plain ASCII punctuation only.",
+                "You are a friendly website and document assistant. Answer in short clear paragraphs using the provided context, compare website and document sections when asked, bold important key terms with markdown, and cite source labels.",
                 stream=True
             )
             payload["max_tokens"] = budgets["max_tokens"]
@@ -492,6 +556,37 @@ def generate_answer(
             fallback_reason
         )
 
+    # ── Gemini fallback (or explicit gemini provider) ──────────────────────────
+    if provider_preference not in ("ollama",) and _has_gemini() and not _cancelled(cancel_event):
+        selected_gemini_model = _resolve_gemini_model(gemini_model)
+        gemini_system = (
+            "You are a helpful website and document assistant. "
+            "Answer concisely using the provided context. "
+            "Use markdown formatting. Bold key terms. Cite sources."
+        )
+        try:
+            gemini_answer = _generate_with_gemini(
+                prompt,
+                max_tokens=budgets["max_tokens"],
+                system_message=gemini_system,
+                cancel_event=cancel_event,
+                model=selected_gemini_model,
+            )
+            if gemini_answer and not _cancelled(cancel_event):
+                gemini_answer = normalize_model_text(gemini_answer)
+                gemini_answer = _repair_flowchart_answer(
+                    gemini_answer,
+                    context=context,
+                    question=question,
+                    provider="Gemini",
+                    model=selected_gemini_model,
+                    cancel_event=cancel_event,
+                )
+                return _answer_result(gemini_answer, "Gemini", selected_gemini_model, fallback_reason)
+        except Exception as e:
+            print(f"Gemini fallback failed: {e}")
+            fallback_reason = f"Gemini failed: {e}"
+
     if not _ollama_enabled():
         if _has_openrouter_key():
             return _answer_result("The AI service is temporarily unavailable. Please try again in a moment.", "none", "", fallback_reason)
@@ -529,7 +624,12 @@ def generate_answer(
         )
 
     except Exception as e:
-        return _answer_result(f"All models failed. Last error from Ollama: {str(e)}", "Ollama", selected_ollama_model, fallback_reason)
+        err_type = type(e).__name__
+        if "Timeout" in err_type or "timeout" in str(e).lower():
+            msg = "The local Ollama model timed out. It may be loading — please try again in a moment."
+        else:
+            msg = "The local Ollama model encountered an error. Please ensure Ollama is running and the model is available."
+        return _answer_result(msg, "Ollama", selected_ollama_model, fallback_reason)
 
 
 def generate_suggestions(context: str, question: str, answer: str, history: list[dict] = None) -> list[str]:

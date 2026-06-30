@@ -98,6 +98,7 @@ SOFT_SKILLS = {
 EDUCATION_TERMS = {
     "bachelor", "bachelors", "b.tech", "btech", "be", "b.e", "master", "masters",
     "m.tech", "mtech", "mba", "phd", "degree", "computer science", "engineering",
+    "high school", "high school diploma", "diploma", "associate", "associates",
 }
 
 CERTIFICATION_TERMS = {
@@ -116,7 +117,7 @@ def _tokens(text: str) -> list[str]:
 
 def _contains_any(text: str, terms: set[str]) -> bool:
     lowered = (text or "").lower()
-    return any(term in lowered for term in terms)
+    return any(re.search(r'\b' + re.escape(term) + r'\b', lowered) for term in terms)
 
 
 def _detect_resume_job_pair(document_a: str, document_b: str) -> dict:
@@ -135,9 +136,10 @@ def _detect_resume_job_pair(document_a: str, document_b: str) -> dict:
 
 def _extract_skill_terms(text: str) -> set[str]:
     lowered = (text or "").lower()
-    found = {skill for skill in TECH_SKILLS | SOFT_SKILLS if skill in lowered}
-    token_set = set(_tokens(text))
-    found.update(token for token in token_set if token in TECH_SKILLS or token in SOFT_SKILLS)
+    found = set()
+    for skill in TECH_SKILLS | SOFT_SKILLS:
+        if re.search(r'\b' + re.escape(skill) + r'\b', lowered):
+            found.add(skill)
     return found
 
 
@@ -302,7 +304,15 @@ def build_resume_job_fit_analysis(document_a: str, document_b: str, provider: st
         f"Score note: {score_result['calculation_note']}\n"
         f"Critical Must-Haves: {critical_text}\n"
         f"Missing Responsibilities: {'; '.join(missing_responsibilities) or 'None'}\n"
-        f"Preferred skills matched: {', '.join(matched_preferred) or 'None'}\n"
+        f"Preferred skills matched: {', '.join(matched_preferred) or 'None'}\n\n"
+        "=== CLEANED RESUME ===\n"
+        f"{struct_resume.get('cleaned_text', resume)}\n\n"
+        "=== CLEANED JOB DESCRIPTION ===\n"
+        f"{struct_job.get('cleaned_text', job)}\n\n"
+        "=== RESUME STRUCTURE ===\n"
+        f"```json\n{json.dumps(struct_resume, indent=2, ensure_ascii=False)}\n```\n\n"
+        "=== JOB DESCRIPTION STRUCTURE ===\n"
+        f"```json\n{json.dumps(struct_job, indent=2, ensure_ascii=False)}\n```\n\n"
         "Required output sections: Candidate Overview, Job Requirement Overview, Matched Skills, "
         "Missing Skills, Experience Analysis, Education & Certifications, Project Relevance, "
         "Overall Match Score, Hiring Recommendation.\n"
@@ -701,8 +711,14 @@ def build_intelligent_comparison_framework(document_a: str, document_b: str, que
     )
     score_text = _format_score_components(score_result["components"])
     json_blocks = (
-        f"Document A ({type_a}) Extracted JSON:\n```json\n{json.dumps(struct_a, indent=2, ensure_ascii=False)}\n```\n\n"
-        f"Document B ({type_b}) Extracted JSON:\n```json\n{json.dumps(struct_b, indent=2, ensure_ascii=False)}\n```\n"
+        f"=== CLEANED DOCUMENT A ({type_a}) ===\n"
+        f"{struct_a.get('cleaned_text', document_a)}\n\n"
+        f"=== CLEANED DOCUMENT B ({type_b}) ===\n"
+        f"{struct_b.get('cleaned_text', document_b)}\n\n"
+        f"=== DOCUMENT A STRUCTURE ===\n"
+        f"```json\n{json.dumps(struct_a, indent=2, ensure_ascii=False)}\n```\n\n"
+        f"=== DOCUMENT B STRUCTURE ===\n"
+        f"```json\n{json.dumps(struct_b, indent=2, ensure_ascii=False)}\n```\n"
     )
     return (
         "INTELLIGENT DOCUMENT COMPARISON FRAMEWORK:\n"
@@ -753,6 +769,55 @@ def empty_compare_response(*, answer_time_ms: int, retrieval_time_ms: int, requi
             "metrics": {"answer_time_ms": answer_time_ms, "retrieval_time_ms": retrieval_time_ms, "context_chars": 0, "selected_chunks": 0, "confidence": "low", "document_mode": document_mode}}
 
 
+from collections import defaultdict
+
+def clean_document_text(text: str) -> str:
+    if not text:
+        return ""
+    text = re.sub(r"(?i)^\s*(?:page\s*)?\d+\s*(?:of|/)\s*\d+\s*$", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*-\s*\d+\s*-\s*$", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*\d+\s*$", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^[=_\-\*]{3,}\s*$", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*[•·▪-]\s*$", "", text, flags=re.MULTILINE)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+def detect_document_sections(text: str, doc_type: str) -> dict:
+    sections = defaultdict(list)
+    current_section = "uncategorized"
+    resume_aliases = {
+        "summary": ["summary", "professional summary", "objective", "profile"],
+        "skills": ["skills", "technical skills", "core competencies", "technologies", "technology stack"],
+        "experience": ["experience", "professional experience", "employment history", "work history", "career history", "relevant experience"],
+        "projects": ["projects", "project experience"],
+        "education": ["education", "academic background", "academic qualifications"],
+        "certifications": ["certifications", "licenses", "credentials"]
+    }
+    jd_aliases = {
+        "overview": ["overview", "about the role", "role overview", "job summary", "about us"],
+        "responsibilities": ["responsibilities", "what you will do", "duties", "key responsibilities"],
+        "requirements": ["requirements", "qualifications", "must have", "required qualifications", "basic qualifications"],
+        "preferred": ["preferred", "nice to have", "preferred qualifications"],
+        "skills": ["required skills", "technical requirements", "skills"]
+    }
+    aliases = resume_aliases if doc_type == "Resume / CV" else jd_aliases if doc_type == "Job Description" else {}
+    alias_map = {phrase: can for can, phrases in aliases.items() for phrase in phrases}
+    for line in text.splitlines():
+        clean_line = line.strip()
+        if not clean_line: continue
+        if len(clean_line) < 60:
+            ll = clean_line.lower().strip(":-#* ")
+            if ll in alias_map:
+                current_section = alias_map[ll]
+                continue
+        sections[current_section].append(clean_line)
+    return {k: "\n".join(v) for k, v in sections.items() if v}
+
+def normalize_skill_terms(skills: list[str]) -> list[str]:
+    mapping = {"js": "javascript", "java script": "javascript", "py": "python", "postgres": "postgresql", "amazon web services": "aws", "gcp": "google cloud", "k8s": "kubernetes", "react.js": "react", "node.js": "node"}
+    return sorted(list({mapping.get(s.lower().strip(), s.lower().strip()) for s in skills}))
+
+
 def _fallback_extraction(text: str, doc_type: str) -> dict:
     """Fast lexical extraction — no LLM calls. Accurate enough for comparison baseline."""
     lowered = (text or "").lower()
@@ -761,8 +826,8 @@ def _fallback_extraction(text: str, doc_type: str) -> dict:
         years = _extract_years(text)
         return {"seniority_level_inferred": "Mid", "calculated_total_years_experience": years, "skills": skills,
                 "experience": {"summary": f"Estimated {years} years from CV text."},
-                "education": [t for t in EDUCATION_TERMS if t in lowered],
-                "certifications": [t for t in CERTIFICATION_TERMS if t in lowered],
+                "education": [t for t in EDUCATION_TERMS if re.search(r'\b' + re.escape(t) + r'\b', lowered)],
+                "certifications": [t for t in CERTIFICATION_TERMS if re.search(r'\b' + re.escape(t) + r'\b', lowered)],
                 "projects": ["Projects detected."] if "project" in lowered else []}
     if doc_type == "Job Description":
         skills = list(_extract_skill_terms(text))
@@ -773,8 +838,8 @@ def _fallback_extraction(text: str, doc_type: str) -> dict:
                 "required_experience": {"years_number": years, "summary": f"{years} years required."},
                 "leadership_management_responsibilities": [], "client_facing_responsibilities": [],
                 "core_responsibilities": lines[:6],
-                "required_education": [t for t in EDUCATION_TERMS if t in lowered],
-                "required_certifications": [t for t in CERTIFICATION_TERMS if t in lowered]}
+                "required_education": [t for t in EDUCATION_TERMS if re.search(r'\b' + re.escape(t) + r'\b', lowered)],
+                "required_certifications": [t for t in CERTIFICATION_TERMS if re.search(r'\b' + re.escape(t) + r'\b', lowered)]}
     if doc_type in ("Contract", "Policy Document"):
         lines = _comparison_units(text, limit=10)
         return {"scope": "General scope.",
@@ -794,14 +859,61 @@ def _fallback_extraction(text: str, doc_type: str) -> dict:
 
 
 def _extract_structure_with_fallback(text: str, doc_type: str) -> dict:
-    """Extract document structure using fast lexical analysis only.
-    LLM extraction removed — it was firing 2 nested LLM calls per compare query,
-    adding 10-30s of delay. Lexical extraction is fast and accurate enough for
-    the comparison baseline used by build_alignment_analysis.
-    """
+    """V2 Enhanced Extraction Pipeline"""
     if not text or not text.strip():
         return _fallback_extraction("", doc_type)
-    return _fallback_extraction(text, doc_type)
+
+    cleaned_text = clean_document_text(text)
+    sections = detect_document_sections(cleaned_text, doc_type)
+    
+    # Fallback to general parsing if specific sections aren't heavily populated
+    fallback_struct = _fallback_extraction(cleaned_text, doc_type)
+    
+    # Extract skills
+    raw_skills = set()
+    if "skills" in sections:
+        raw_skills.update(_extract_skill_terms(sections["skills"]))
+    if "experience" in sections:
+        raw_skills.update(_extract_skill_terms(sections["experience"]))
+    if "requirements" in sections:
+        raw_skills.update(_extract_skill_terms(sections["requirements"]))
+    if not raw_skills:
+        raw_skills.update(_extract_skill_terms(cleaned_text))
+        
+    normalized_skills = normalize_skill_terms(list(raw_skills))
+    
+    # Base structure
+    struct = {
+        "doc_type": doc_type,
+        "cleaned_text": cleaned_text,
+        "sections": sections,
+        "normalized_skills": normalized_skills,
+        "extracted_keywords": list(raw_skills)
+    }
+    
+    # Merge specific fields from fallback to keep compatibility with older code
+    if doc_type == "Resume / CV":
+        struct["calculated_total_years_experience"] = _extract_years(cleaned_text)
+        struct["seniority_level_inferred"] = fallback_struct.get("seniority_level_inferred", "Mid")
+        struct["education"] = fallback_struct.get("education", [])
+        struct["certifications"] = fallback_struct.get("certifications", [])
+        struct["skills"] = normalized_skills
+        struct["experience"] = fallback_struct.get("experience", {})
+    elif doc_type == "Job Description":
+        struct["required_experience"] = fallback_struct.get("required_experience", {})
+        struct["seniority_level"] = fallback_struct.get("seniority_level", "Mid")
+        struct["required_skills"] = normalized_skills
+        struct["preferred_skills"] = fallback_struct.get("preferred_skills", [])
+        struct["critical_must_haves"] = fallback_struct.get("critical_must_haves", [])
+        struct["core_responsibilities"] = fallback_struct.get("core_responsibilities", [])
+        struct["leadership_management_responsibilities"] = fallback_struct.get("leadership_management_responsibilities", [])
+        struct["client_facing_responsibilities"] = fallback_struct.get("client_facing_responsibilities", [])
+        struct["required_education"] = fallback_struct.get("required_education", [])
+        struct["required_certifications"] = fallback_struct.get("required_certifications", [])
+    else:
+        struct.update(fallback_struct)
+
+    return struct
 
 
 def _extract_both_structures(doc_a: str, doc_b: str, type_a: str, type_b: str) -> tuple[dict, dict]:

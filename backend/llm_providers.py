@@ -5,6 +5,15 @@ import time
 import requests
 from dotenv import load_dotenv
 
+try:
+    from google import genai as _genai
+    from google.genai import types as _genai_types
+    _GENAI_AVAILABLE = True
+except ImportError:
+    _genai = None
+    _genai_types = None
+    _GENAI_AVAILABLE = False
+
 load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
@@ -13,6 +22,7 @@ OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
 DEFAULT_OPENROUTER_MODELS = [
     "nvidia/nemotron-3-super-120b-a12b:free",
     "openai/gpt-oss-120b:free",
+    "google/gemma-4-31b-it:free",
 ]
 
 OPENROUTER_MODELS = [
@@ -42,6 +52,14 @@ OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "2048"))
 OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "-1")
 OPENROUTER_COOLDOWN_SECONDS = int(os.getenv("OPENROUTER_COOLDOWN_SECONDS", "120"))
 OPENROUTER_RATE_LIMIT_COOLDOWN_SECONDS = int(os.getenv("OPENROUTER_RATE_LIMIT_COOLDOWN_SECONDS", "300"))
+
+# ── Gemini (Google AI) ────────────────────────────────────────────────
+GOOGLE_API_KEY   = os.getenv("GOOGLE_API_KEY", "")
+GEMINI_MODEL     = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+GEMINI_MAX_TOKENS = int(os.getenv("GEMINI_MAX_TOKENS", "2000"))
+GEMINI_TIMEOUT   = int(os.getenv("GEMINI_TIMEOUT", "60"))
+GEMINI_TEMPERATURE = float(os.getenv("GEMINI_TEMPERATURE", "0.2"))
+ENABLE_GEMINI    = os.getenv("ENABLE_GEMINI", "true").lower() in ("1", "true", "yes", "on")
 
 session = requests.Session()
 openrouter_unavailable_until = 0.0
@@ -115,21 +133,20 @@ def resolve_openrouter_models(model: str = None) -> list[str]:
     requested = (model or "").strip()
     if not requested:
         return OPENROUTER_MODELS[:OPENROUTER_MAX_ATTEMPTS]
-    if requested in OPENROUTER_MODELS:
-        return [requested]
-    print(f"Requested OpenRouter model '{requested}' is not configured. Using default OpenRouter model.")
-    return OPENROUTER_MODELS[:OPENROUTER_MAX_ATTEMPTS]
+    # Always honour the user's explicit model choice — even if it's not in the
+    # configured default list.  Falling back silently to defaults made the
+    # model selector appear broken (UI showed model X, backend used model Y).
+    return [requested]
 
 
 def resolve_ollama_model(model: str = None) -> str:
     requested = (model or "").strip()
     if not requested:
         return OLLAMA_MODEL
-    available = set(list_ollama_models())
-    if requested in available:
-        return requested
-    print(f"Requested Ollama model '{requested}' is not installed. Using {OLLAMA_MODEL}.")
-    return OLLAMA_MODEL
+    # Always honour the user's explicit model choice.
+    # If it's not installed Ollama will return a clear error rather than
+    # silently using a different model than what the user selected.
+    return requested
 
 
 def cancelled(cancel_event=None) -> bool:
@@ -155,6 +172,98 @@ def _is_garbage_response(text: str) -> bool:
 
 def clean_openrouter_response(text: str) -> str:
     return str(text or "").replace("\r\n", "\n")
+
+
+# ── Gemini helpers ────────────────────────────────────────────────────
+
+def has_gemini() -> bool:
+    return bool(GOOGLE_API_KEY and ENABLE_GEMINI and _GENAI_AVAILABLE)
+
+
+def list_gemini_models() -> list[str]:
+    if not has_gemini():
+        return []
+    return [
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+        "gemini-2.0-flash",
+    ]
+
+
+def resolve_gemini_model(model: str = None) -> str:
+    """Resolve a requested Gemini model to a valid one, falling back to the default."""
+    requested = (model or "").strip()
+    if not requested:
+        return GEMINI_MODEL
+    if requested in list_gemini_models():
+        return requested
+    print(f"Requested Gemini model '{requested}' is not available. Using {GEMINI_MODEL}.")
+    return GEMINI_MODEL
+
+
+def generate_with_gemini(
+    prompt: str,
+    max_tokens: int = None,
+    system_message: str = "",
+    cancel_event=None,
+    model: str = None,
+) -> str:
+    """Call Gemini and return the text response. Returns empty string on failure."""
+    if not has_gemini():
+        return ""
+    if cancelled(cancel_event):
+        return ""
+    selected_model = resolve_gemini_model(model)
+    try:
+        client = _genai.Client(api_key=GOOGLE_API_KEY)
+        config = _genai_types.GenerateContentConfig(
+            max_output_tokens=max_tokens or GEMINI_MAX_TOKENS,
+            temperature=GEMINI_TEMPERATURE,
+            system_instruction=system_message or None,
+        )
+        response = client.models.generate_content(
+            model=selected_model,
+            contents=prompt,
+            config=config,
+        )
+        return (response.text or "").strip()
+    except Exception as e:
+        print(f"Gemini generation failed: {e}")
+        return ""
+
+
+def stream_with_gemini(
+    prompt: str,
+    max_tokens: int = None,
+    system_message: str = "",
+    cancel_event=None,
+    model: str = None,
+):
+    """Generator that yields text chunks from Gemini streaming API."""
+    if not has_gemini():
+        return
+    if cancelled(cancel_event):
+        return
+    selected_model = resolve_gemini_model(model)
+    try:
+        client = _genai.Client(api_key=GOOGLE_API_KEY)
+        config = _genai_types.GenerateContentConfig(
+            max_output_tokens=max_tokens or GEMINI_MAX_TOKENS,
+            temperature=GEMINI_TEMPERATURE,
+            system_instruction=system_message or None,
+        )
+        for chunk in client.models.generate_content_stream(
+            model=selected_model,
+            contents=prompt,
+            config=config,
+        ):
+            if cancelled(cancel_event):
+                return
+            text = getattr(chunk, "text", "") or ""
+            if text:
+                yield text
+    except Exception as e:
+        print(f"Gemini stream failed: {e}")
 
 
 def read_openrouter_stream(response: requests.Response, cancel_event=None) -> str:

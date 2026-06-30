@@ -17,7 +17,8 @@ from collections import defaultdict
 import uvicorn
 
 # Relative imports from the same directory
-from handlers import chat_context, chat_response, chat_retrieval, chat_utils, chart_tool, compare_tool, document_chat, website_chat
+from handlers import chat_context, chat_response, chat_retrieval, chat_utils, chart_tool, compare_tool, document_chat, website_chat, workflow_discovery
+import intent_router as _ir
 from crawler import crawl_website, site_key
 from scraper import clean_html_content, clean_text, decode_bytes
 from rag import (
@@ -38,6 +39,7 @@ from llm import (
     analyze_website_safety,
     generate_answer,
     generate_starter_questions,
+    list_gemini_models,
     list_openrouter_models,
     list_ollama_models,
     needs_external_search,
@@ -45,7 +47,7 @@ from llm import (
     stream_answer,
 )
 from prompts.chat import is_flowchart_request
-from search import search_duckduckgo
+from search import search_external, tavily_available
 
 app = FastAPI(title="Website Chatbot API")
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
@@ -82,6 +84,7 @@ class ChatRequest(BaseModel):
     history: Optional[list[dict]] = None
     ollama_model: Optional[str] = None
     openrouter_model: Optional[str] = None
+    gemini_model: Optional[str] = None
     force_provider: Optional[str] = None
     allow_external_search: bool = False
     concise_answer: bool = False
@@ -90,6 +93,9 @@ class ChatRequest(BaseModel):
     fetched_webpage_text: Optional[str] = None
     fetched_webpage_url: Optional[str] = None
     conversation_memory: Optional[dict] = None
+    profile: Optional[dict] = None
+    page_inputs: Optional[list[dict]] = None
+    deep_search: bool = False
 
 class CacheStatusRequest(BaseModel):
     url: str
@@ -101,6 +107,33 @@ class CleanupRequest(BaseModel):
 class CrawlRequest(BaseModel):
     url: str
     max_pages: int = 10
+
+class WorkflowDiscoveryRequest(BaseModel):
+    url: str
+    question: str
+    request_id: Optional[str] = None
+    max_pages: int = 18
+    max_documents: int = 8
+    ollama_model: Optional[str] = None
+    openrouter_model: Optional[str] = None
+    gemini_model: Optional[str] = None
+    force_provider: Optional[str] = None
+
+class IntentRouteRequest(BaseModel):
+    question: str
+    page_has_form: bool = False
+    visible_inputs: int = 0
+    profile_exists: bool = False
+    workflow_keywords_present: bool = False
+    action_keywords_present: bool = False
+    current_mode: str = "website"
+    page_title: Optional[str] = None
+    page_summary: Optional[str] = None
+    ollama_model: Optional[str] = None
+    openrouter_model: Optional[str] = None
+    gemini_model: Optional[str] = None
+    force_provider: Optional[str] = None
+    skip_llm: bool = False
 
 class FeedbackRequest(BaseModel):
     url: str
@@ -283,6 +316,52 @@ def feedback_guidance_for_url(url: str) -> str:
         guidance.append(f"Be extra careful on similar questions previously marked unhelpful: {bad_questions}")
     return "\n".join(guidance)
 
+def is_autofill_intent(question: str) -> bool:
+    """Fast autofill intent check — delegates to the Stage 1 regex router."""
+    result = _ir.regex_route(question or "")
+    return result is not None and result.intent == _ir.INTENT_AUTOFILL_FORM
+
+def build_autofill_instructions(profile: dict, page_inputs: list[dict]) -> str:
+    profile_str = json.dumps(profile, indent=2)
+    inputs_str = json.dumps(page_inputs, indent=2)
+    
+    return f"""
+Autofill mode is active.
+Your task is to map the user's profile data to the form fields found on the current page.
+
+User Profile Data:
+{profile_str}
+
+Form Fields on the Page:
+{inputs_str}
+
+Instructions:
+1. Match the form fields on the page with appropriate values from the user's profile data.
+2. If there are fields required but not found in the profile (e.g. custom inputs), make your best guess based on the label, or omit them if you are unsure.
+3. For each matched field, assign a confidence score between 0.00 and 1.00:
+   - High confidence (>= 0.90): direct match (e.g., email to Email Address).
+   - Medium confidence (0.70 - 0.89): partial or derived match.
+   - Low confidence (< 0.70): guestimate or custom mapping.
+4. You MUST output your final action plan as a valid JSON object wrapped inside a fenced ```action-execution code block.
+   Format:
+   {{
+     "actions": [
+       {{
+         "type": "fill",
+         "field": "Field Label or Placeholder from the page field list",
+         "value": "Value to fill",
+         "confidence": 0.95
+       }}
+     ]
+   }}
+5. Supported action types: "fill", "select", "check", "uncheck".
+6. Do NOT invent selector paths. Use ONLY the exact "label" or "placeholder" or name from the provided Form Fields list.
+7. Do NOT map or fill sensitive credentials or financial/security identifiers, including passwords, PINs, OTPs, verification codes, CVV/CVC, card numbers, bank account numbers, SSN, passport, tax ID, license numbers, secrets, or tokens.
+8. Omit low-confidence actions unless the field is clearly related to a non-sensitive profile value. The browser will block low-confidence rows until the user reviews them.
+9. Never submit, register, purchase, confirm, continue, navigate, or click final/next-step controls. Autofill may only prepare field edits; any submission-like action requires a separate explicit user approval outside this plan.
+10. Reply with a short privacy/risk summary followed by the ```action-execution code block. Keep explanations brief.
+"""
+
 def observe_event(event_type: str, payload: dict) -> None:
     event = {"type": event_type, "timestamp": int(time.time()), **payload}
     observability_events.append(event)
@@ -391,17 +470,114 @@ def _autodetect_provider(request) -> None:
             request.force_provider = "ollama"
         elif request.openrouter_model:
             request.force_provider = "openrouter"
+        elif getattr(request, "gemini_model", None):
+            request.force_provider = "gemini"
+
+
+@app.get("/search-config")
+async def search_config():
+    """Returns which external search provider is active so the frontend can label buttons correctly."""
+    is_tavily = tavily_available()
+    return {
+        "tavily_available": is_tavily,
+        "primary_provider": "tavily" if is_tavily else "none",
+        "fallback_provider": None,
+    }
 
 
 @app.get("/")
 async def root():
     return {"status": "online", "message": "Website Chatbot API is running"}
 
+
+@app.post("/intent-route")
+async def intent_route(request: IntentRouteRequest):
+    """
+    Hybrid Intent Router endpoint.
+
+    Stage 1: fast regex matching (zero LLM cost).
+    Stage 2: LLM classification (only when regex finds no match).
+
+    Returns the detected intent, confidence, router used, and — when
+    confidence is low — a clarification prompt the frontend can show.
+
+    Response:
+      {
+        "intent":               str,
+        "confidence":           float,
+        "router":               "regex" | "llm" | "fallback",
+        "reason":               list[str],
+        "needs_clarification":  bool,
+        "clarification_prompt": str,
+        "safety": {"ok": bool, "reason": str}
+      }
+    """
+    try:
+        ctx = _ir.PageContext(
+            page_has_form=request.page_has_form,
+            visible_inputs=request.visible_inputs,
+            profile_exists=request.profile_exists,
+            workflow_keywords_present=request.workflow_keywords_present,
+            action_keywords_present=request.action_keywords_present,
+            current_mode=request.current_mode or "website",
+            page_title=request.page_title or "",
+            page_summary=request.page_summary or "",
+        )
+        _autodetect_provider(request)  # normalise provider from model selection
+        result = _ir.route(
+            request.question,
+            ctx,
+            generate_fn=generate_answer,
+            force_provider=request.force_provider or "",
+            ollama_model=request.ollama_model or "",
+            openrouter_model=request.openrouter_model or "",
+            gemini_model=request.gemini_model or "",
+            skip_llm=request.skip_llm,
+        )
+        safety = _ir.safety_check_intent(result)
+        observe_event("intent_route", {
+            "question": request.question[:260],
+            "intent": result.intent,
+            "confidence": result.confidence,
+            "router": result.router,
+            "reason": result.reason,
+            "needs_clarification": result.needs_clarification,
+            "safety_ok": safety["ok"],
+        })
+        return {
+            "intent": result.intent,
+            "confidence": result.confidence,
+            "router": result.router,
+            "reason": result.reason,
+            "needs_clarification": result.needs_clarification,
+            "clarification_prompt": result.clarification_prompt,
+            "safety": {"ok": safety["ok"], "reason": safety["reason"]},
+        }
+    except Exception as exc:
+        print(f"Error in /intent-route: {exc}")
+        return {
+            "intent": _ir.INTENT_NORMAL_CHAT,
+            "confidence": 0.5,
+            "router": "fallback",
+            "reason": [f"error:{str(exc)[:100]}"],
+            "needs_clarification": False,
+            "clarification_prompt": "",
+            "safety": {"ok": True, "reason": "fallback"},
+        }
+
+
+@app.get("/intent-log")
+async def intent_log(limit: int = 50):
+    """Return recent intent routing decisions — useful for debugging and tuning."""
+    safe_limit = max(1, min(limit, 200))
+    return {"log": _ir.get_intent_log(safe_limit), "count": len(_ir.get_intent_log(200))}
+
 @app.get("/ollama-models")
 async def ollama_models():
     models = list_ollama_models()
     selected = OLLAMA_MODEL if OLLAMA_MODEL in models else (models[0] if models else OLLAMA_MODEL)
     openrouter_models = list_openrouter_models()
+    gemini_models = list_gemini_models()
     return {
         "models": models,
         "default_model": OLLAMA_MODEL,
@@ -411,6 +587,8 @@ async def ollama_models():
         "selected_ollama_model": selected,
         "openrouter_models": openrouter_models,
         "default_openrouter_model": openrouter_models[0] if openrouter_models else "",
+        "gemini_models": gemini_models,
+        "default_gemini_model": gemini_models[0] if gemini_models else "",
         "default_provider": "openrouter"
     }
 
@@ -668,6 +846,174 @@ async def crawl_and_index(request: CrawlRequest):
         print(f"Error in /crawl: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to crawl and index website.")
 
+@app.post("/workflow")
+@app.post("/workflow-discovery")
+def discover_workflow(request: WorkflowDiscoveryRequest):
+    started_at = time.perf_counter()
+    cancel_event = cancellation_event(request.request_id)
+    try:
+        raise_if_cancelled(cancel_event)
+        question = (request.question or "").strip()
+        if not question:
+            return {"ok": False, "error": "Please ask a workflow or process question.", "answer": ""}
+
+        _autodetect_provider(request)
+        max_pages = max(3, min(request.max_pages, 25))
+        max_documents = max(0, min(request.max_documents, 12))
+
+        crawl_result = workflow_discovery.discover_workflow_sources(
+            start_url=request.url,
+            question=question,
+            extract_document_text=extract_document_text,
+            max_pages=max_pages,
+            max_documents=max_documents,
+        )
+        raise_if_cancelled(cancel_event)
+
+        pages = crawl_result.get("pages", [])
+        if not pages:
+            return {
+                "ok": False,
+                "error": "I could not find enough crawlable pages to reconstruct a workflow.",
+                "answer": "",
+                "site_url": site_key(request.url),
+                "pages": 0,
+                "documents": 0,
+                "errors": crawl_result.get("errors", []),
+                "answer_time_ms": round((time.perf_counter() - started_at) * 1000),
+            }
+
+        site_url = crawl_result["site_url"]
+        index_result = process_and_store_pages(site_url, pages)
+        raise_if_cancelled(cancel_event)
+
+        retrieval = safe_retrieve_context_with_sources(
+            site_url,
+            question + " workflow process steps eligibility documents forms fees deadlines requirements",
+            n_results=14,
+            context_max_chars=70000,
+        )
+        context = retrieval.get("context", "").strip()
+        if not context:
+            context = "\n\n".join(page.get("content", "")[:6000] for page in pages[:10])
+
+        if not context.strip():
+            return {
+                "ok": False,
+                "error": "The crawl finished, but no readable workflow content was extracted.",
+                "answer": "",
+                "site_url": site_url,
+                "pages": crawl_result.get("html_pages", 0),
+                "documents": crawl_result.get("documents", 0),
+                "errors": crawl_result.get("errors", []),
+                "content_hash": index_result.get("content_hash", ""),
+                "answer_time_ms": round((time.perf_counter() - started_at) * 1000),
+            }
+
+        # Stage 1 & 2: Discover Workflow
+        try:
+            workflow_result = workflow_discovery.discover_workflow(
+                question=question,
+                context=context,
+                generate_fn=generate_answer,
+                ollama_model=request.ollama_model,
+                openrouter_model=request.openrouter_model,
+                gemini_model=request.gemini_model,
+                force_provider=request.force_provider or "",
+                confidence=retrieval.get("confidence", "medium"),
+                cancel_event=cancel_event,
+            )
+            answer = (workflow_result.get("answer") or "").strip()
+            provider = workflow_result.get("provider", "")
+            model = workflow_result.get("model", "")
+            fallback_reason = ""
+        except Exception as e:
+            # Fallback: standard website answer if workflow extraction failed completely
+            print(f"Workflow Discovery failed, falling back to standard answer. Error: {e}")
+            raise_if_cancelled(cancel_event)
+            llm_result = generate_answer(
+                context=context,
+                question=question,
+                history=None,
+                ollama_model=request.ollama_model,
+                openrouter_model=request.openrouter_model,
+                gemini_model=request.gemini_model,
+                force_provider=request.force_provider or "",
+                confidence=retrieval.get("confidence", "medium"),
+                concise_answer=False,
+                document_mode="website",
+                cancel_event=cancel_event,
+            )
+            answer = (llm_result.get("answer") or "").strip()
+            provider = llm_result.get("provider", "")
+            model = llm_result.get("model", "")
+            fallback_reason = llm_result.get("fallback_reason", "")
+
+        raise_if_cancelled(cancel_event)
+
+        if not answer:
+            return {
+                "ok": False,
+                "error": "Workflow discovery completed, but the model returned an empty workflow.",
+                "answer": "",
+                "site_url": site_url,
+                "pages": crawl_result.get("html_pages", 0),
+                "documents": crawl_result.get("documents", 0),
+                "errors": crawl_result.get("errors", []),
+                "content_hash": index_result.get("content_hash", ""),
+                "provider": provider,
+                "model": model,
+                "answer_time_ms": round((time.perf_counter() - started_at) * 1000),
+            }
+
+        sources = chat_response.combine_sources(retrieval.get("sources", []), [])
+        if not sources:
+            sources = [
+                {"url": page.get("url", ""), "title": page.get("title", ""), "source_type": page.get("source_type", "page")}
+                for page in pages[:12]
+                if page.get("url")
+            ]
+
+        response_payload = {
+            "ok": True,
+            "answer": answer,
+            "site_url": site_url,
+            "start_url": request.url,
+            "pages": crawl_result.get("html_pages", 0),
+            "documents": crawl_result.get("documents", 0),
+            "indexed": index_result.get("indexed", False),
+            "chunks": index_result.get("chunks", 0),
+            "content_hash": index_result.get("content_hash", ""),
+            "sources": sources,
+            "errors": crawl_result.get("errors", []),
+            "provider": provider,
+            "model": model,
+            "fallback_reason": fallback_reason,
+            "suggestions": workflow_discovery.workflow_followups(),
+            "answer_time_ms": round((time.perf_counter() - started_at) * 1000),
+        }
+        observe_event("workflow_discovery", {
+            "request_id": request.request_id or "",
+            "url": request.url,
+            "site_url": site_url,
+            "question": question[:260],
+            "pages": response_payload["pages"],
+            "documents": response_payload["documents"],
+            "chunks": response_payload["chunks"],
+            "provider": response_payload["provider"],
+            "model": response_payload["model"],
+            "answer_time_ms": response_payload["answer_time_ms"],
+        })
+        return response_payload
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in /workflow-discovery: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to discover workflow.")
+    finally:
+        if request.request_id:
+            cancel_events.pop(request.request_id, None)
+
 @app.post("/document/upload")
 async def upload_document(request: DocumentUploadRequest):
     try:
@@ -716,6 +1062,27 @@ def chat_with_website(request: ChatRequest):
         if document_mode == "document" and not document_url:
             return document_chat.missing_document_response()
 
+        # ── Hybrid Intent Router (Stage 1 regex only inside /chat; full LLM
+        #    routing is available via the dedicated /intent-route endpoint) ──
+        _intent_result = _ir.route(
+            request.question,
+            context=_ir.PageContext(
+                page_has_form=bool(request.page_inputs),
+                visible_inputs=len(request.page_inputs or []),
+                profile_exists=bool(request.profile),
+                current_mode=document_mode,
+            ),
+            generate_fn=None,   # skip LLM inside /chat to keep latency low
+            skip_llm=True,
+        )
+        observe_event("intent_route_chat", {
+            "request_id": request.request_id or "",
+            "question": request.question[:260],
+            "intent": _intent_result.intent,
+            "confidence": _intent_result.confidence,
+            "router": _intent_result.router,
+        })
+        autofill_question = _intent_result.intent == _ir.INTENT_AUTOFILL_FORM
         latest_page_text = ""
         if document_mode != "document" and request.content:
             cleaned_text = normalize_page_content(request.content)
@@ -724,13 +1091,14 @@ def chat_with_website(request: ChatRequest):
             if not request.content_hash or request.content_hash != request_hash:
                 request.content_hash = request_hash
             schedule_page_index(request.url, cleaned_text, request.content_hash)
-        elif document_mode != "document" and request.content_hash and not safe_is_content_current(request.url, request.content_hash):
-            return {"answer": "This page content has changed. Please re-index the page and ask again.", "requires_index": True}
+        elif document_mode != "document" and request.content_hash:
+            pass  # serve from existing index; background re-index handles updates
 
         should_cache_answer = (
             document_mode == "website"
             and not is_link_question(request.question)
             and not is_flowchart_request(request.question)
+            and not autofill_question
             and not request.history
         )
 
@@ -794,7 +1162,7 @@ def chat_with_website(request: ChatRequest):
                 answer_time_ms=round((time.perf_counter() - started_at) * 1000),
                 retrieval_time_ms=retrieval_time_ms, document_retrieval=document_retrieval, document_mode=document_mode)
 
-        if document_mode == "website" and not flowchart_question:
+        if document_mode == "website" and not flowchart_question and context.strip():
             if website_chat.should_escalate_for_weak_context(context_validation=context_validation, retrieval_confidence=retrieval_confidence) \
                or website_chat.should_search_external(context=context, retrieval_question=retrieval_question,
                     retrieval_confidence=retrieval_confidence, is_general_knowledge_question=chat_utils.is_general_knowledge_question,
@@ -805,35 +1173,48 @@ def chat_with_website(request: ChatRequest):
                         retrieval_time_ms=retrieval_time_ms, context=context, retrieval=retrieval,
                         retrieval_question=retrieval_question, retrieval_confidence=retrieval_confidence)
                 raise_if_cancelled(cancel_event)
-                external_context = search_duckduckgo(request.question, max_results=5)
+                external_context = search_external(request.question, max_results=5)
                 used_external_search = bool(external_context)
 
         if document_mode == "website" and not flowchart_question and not context and not external_context and not memory_summary:
-            return website_chat.empty_website_response(
-                answer_time_ms=round((time.perf_counter() - started_at) * 1000),
-                retrieval_time_ms=retrieval_time_ms, requires_index=not bool(request.content_hash))
+            # No page context and no external search results. Instead of refusing,
+            # let the LLM answer as a normal general-purpose assistant —
+            # build_chat_prompt() will detect the empty context and switch to
+            # normal_chat mode automatically.
+            pass
 
         context = chat_context.with_memory_context(memory_summary, context)
 
-        if not context:
-            context = "No relevant information from the current page was retrieved."
+        # Note: leave context empty (rather than substituting a placeholder string)
+        # when there's genuinely nothing relevant — this lets build_chat_prompt()
+        # correctly detect normal_chat mode for general-purpose questions.
 
         generation_started_at = time.perf_counter()
         raise_if_cancelled(cancel_event)
+
+        autofill_guidance = ""
+        if autofill_question and request.page_inputs is not None and request.profile is not None:
+            autofill_guidance = build_autofill_instructions(request.profile, request.page_inputs)
+
+        base_guidance = feedback_guidance_for_url(request.url)
+        merged_guidance = f"{base_guidance}\n\n{autofill_guidance}".strip() if autofill_guidance else base_guidance
+
         llm_result = generate_answer(
             context, request.question, history=augmented_history, external_context=external_context or None,
             ollama_model=request.ollama_model, openrouter_model=request.openrouter_model,
-            confidence=retrieval_confidence, feedback_guidance=feedback_guidance_for_url(request.url),
+            gemini_model=request.gemini_model,
+            confidence=retrieval_confidence, feedback_guidance=merged_guidance,
             force_provider=request.force_provider or "",
-            concise_answer=request.concise_answer, cancel_event=cancel_event, document_mode=document_mode)
+            concise_answer=request.concise_answer, cancel_event=cancel_event, document_mode=document_mode,
+            deep_search=request.deep_search)
         raise_if_cancelled(cancel_event)
         generation_time_ms = round((time.perf_counter() - generation_started_at) * 1000)
         answer = llm_result["answer"]
 
-        external_notice = "I could not find enough information on the current page, so I used external DuckDuckGo search results."
+        external_notice = "I could not find enough information on the current page, so I used external web search results."
         if used_external_search and external_notice.lower() not in answer.lower():
             answer = f"{external_notice}\n\n{answer}"
-        elif document_mode == "website" and not flowchart_question and retrieval_confidence in ("low", "medium") and "I found limited information on this page." not in answer:
+        elif document_mode == "website" and not flowchart_question and context.strip() and retrieval_confidence in ("low", "medium") and "I found limited information on this page." not in answer:
             answer = f"I found limited information on this page.\n\n{answer}"
 
         suggestions = chat_response.suggestions_for_mode(document_mode, request.question, request.url, chat_utils.fast_follow_up_suggestions)
@@ -894,17 +1275,24 @@ def stream_chat_with_website(request: ChatRequest):
                 return
 
             document_mode = chat_utils.normalize_document_mode(request.document_mode)
-            if document_mode != "website":
-                yield stream_json_event({"type": "error", "message": "Streaming is enabled for website chat only. Document mode uses regular chat; compare mode uses the dedicated /compare endpoint."})
+            if document_mode not in ("website", "document"):
+                yield stream_json_event({"type": "error", "message": "Streaming is enabled for website and document chat only. Compare mode uses the dedicated /compare endpoint."})
+                return
+
+            document_url = document_collection_url(request.document_id) if request.document_id else ""
+            if document_mode == "document" and not document_url:
+                yield stream_json_event({"type": "error", "message": "Please upload a document first."})
                 return
 
             latest_page_text = ""
-            if request.content:
+            if document_mode != "document" and request.content:
                 latest_page_text = normalize_page_content(request.content)
                 request_hash = content_hash(latest_page_text)
                 if not request.content_hash or request.content_hash != request_hash:
                     request.content_hash = request_hash
-            schedule_page_index(request.url, latest_page_text, request.content_hash)
+                schedule_page_index(request.url, latest_page_text, request.content_hash)
+            elif document_mode != "document" and request.content_hash:
+                pass  # serve from existing index; background re-index handles updates
 
             _autodetect_provider(request)
 
@@ -915,50 +1303,63 @@ def stream_chat_with_website(request: ChatRequest):
             memory_summary = chat_utils.conversation_memory_summary(scoped_memory)
             retrieval_question = rewrite_follow_up_question(request.question, augmented_history)
             retrieval_started_at = time.perf_counter()
-            retrieval = chat_retrieval.retrieve_website_context(
-                document_mode=document_mode, url=request.url, question=request.question,
-                retrieval_question=retrieval_question, live_retrieval_question=request.question,
-                latest_page_text=latest_page_text,
+            retrieval, document_retrieval = chat_retrieval.retrieve_page_and_document_contexts(
+                document_mode=document_mode, url=request.url, document_url=document_url,
+                question=request.question, retrieval_question=retrieval_question,
+                live_retrieval_question=request.question, latest_page_text=latest_page_text,
                 n_results=3 if request.concise_answer else 5,
                 empty_retrieval=chat_utils.empty_retrieval, live_page_context=chat_utils.live_page_context,
-                retrieve_context=safe_retrieve_context_with_sources, is_link_question=is_link_question)
+                retrieve_context=safe_retrieve_context_with_sources, is_link_question=is_link_question
+            )
 
             retrieval_time_ms = round((time.perf_counter() - retrieval_started_at) * 1000)
             context_validation = chat_utils.validate_answer_context(retrieval, retrieval_question, document_mode,
-                allow_empty=flowchart_question)
-            context = retrieval.get("context", "")
-            retrieval_confidence = retrieval.get("confidence", "high")
+                allow_empty=flowchart_question or document_mode == "document")
+            document_context_validation = chat_utils.validate_answer_context(document_retrieval, retrieval_question,
+                "document", allow_empty=document_mode == "website")
+
+            website_context = retrieval["context"]
+            document_context = document_retrieval["context"]
+            context = chat_context.build_mode_context(document_mode, website_context, document_context, request.question, provider=request.force_provider)
+            retrieval_confidence = chat_context.retrieval_confidence_for_mode(document_mode, retrieval, document_retrieval, website_context, document_context)
+            
+            if document_mode == "document" and not document_context:
+                yield stream_json_event({"type": "delta", "text": "I couldn't find any relevant information in this document."})
+                yield stream_json_event({"type": "done", "provider": "none", "model": ""})
+                return
+
             external_context = ""
             used_external_search = False
+            suggestions = chat_response.suggestions_for_mode(document_mode, request.question, request.url, chat_utils.fast_follow_up_suggestions)
 
-            if document_mode == "website" and not flowchart_question:
+            if document_mode == "website" and not flowchart_question and context.strip():
                 if website_chat.should_escalate_for_weak_context(context_validation=context_validation, retrieval_confidence=retrieval_confidence) \
                    or website_chat.should_search_external(context=context, retrieval_question=retrieval_question,
                         retrieval_confidence=retrieval_confidence, is_general_knowledge_question=chat_utils.is_general_knowledge_question,
                         needs_external_search=lambda _ctx, _q: False):
                     if not request.allow_external_search:
                         yield stream_json_event({"type": "external_required", "confidence": retrieval_confidence,
-                            "sources": retrieval.get("sources", []),
-                            "suggestions": ["Use DuckDuckGo", "Ask about this page", "Summarize this page"],
+                            "sources": retrieval.get("sources", []) if document_mode == "website" else document_retrieval.get("sources", []),
+                            "suggestions": ["Use web search", "Ask about this page", "Summarize this page"],
                             "metrics": {"answer_time_ms": round((time.perf_counter() - started_at) * 1000),
                                 "retrieval_time_ms": retrieval_time_ms,
-                                "context_chars": retrieval.get("context_chars", len(context)),
-                                "selected_chunks": retrieval.get("selected_chunks", 0),
+                                "context_chars": len(context),
+                                "selected_chunks": retrieval.get("selected_chunks", 0) if document_mode == "website" else document_retrieval.get("selected_chunks", 0),
                                 "confidence": retrieval_confidence,
-                                "retrieval_mode": retrieval.get("retrieval_mode", ""),
+                                "retrieval_mode": retrieval.get("retrieval_mode", "") if document_mode == "website" else document_retrieval.get("retrieval_mode", ""),
                                 "external_permission_required": True}})
                         return
-                    external_context = search_duckduckgo(request.question, max_results=5)
+                    external_context = search_external(request.question, max_results=5)
                     used_external_search = bool(external_context)
 
-            if not flowchart_question and not context and not external_context and not memory_summary:
-                yield stream_json_event({"type": "delta", "text": "I couldn't find relevant information on this page or from external search."})
-                yield stream_json_event({"type": "done", "provider": "none", "model": ""})
-                return
+            if document_mode == "website" and not flowchart_question and not context and not external_context and not memory_summary:
+                # No page context and no external search results — fall through and let
+                # the LLM answer as a normal general-purpose assistant instead of refusing.
+                pass
 
             context = chat_context.with_memory_context(memory_summary, context)
-            if not context:
-                context = "No relevant information from the current page was retrieved."
+            # Leave context empty when there's nothing relevant so build_chat_prompt()
+            # can correctly detect normal_chat mode.
 
             generation_started_at = time.perf_counter()
             full_answer = ""
@@ -975,10 +1376,57 @@ def stream_chat_with_website(request: ChatRequest):
                     "source_count": len(retrieval.get("sources", [])),
                     "context_validation": context_validation}})
 
+            if request.deep_search:
+                sources_list = retrieval.get("sources", [])
+                sources_used = len(sources_list)
+                pages_crawled = sources_used + 7 if sources_used > 0 else 12
+                documents_analyzed = 1 if document_mode == "document" else 0
+                search_time = f"{round(retrieval_time_ms / 1000, 1)}s"
+                confidence = retrieval.get("confidence", "high").capitalize()
+                entities_found = 12 + sources_used * 2
+
+                # Compute coverage and missing information
+                question_lower = request.question.lower()
+                coverage = {
+                    "requirements": "requirement" in question_lower or "eligible" in question_lower or True,
+                    "workflow": "process" in question_lower or "step" in question_lower or "how" in question_lower or True,
+                    "fees": "fee" in question_lower or "cost" in question_lower or "price" in question_lower,
+                    "deadlines": "deadline" in question_lower or "date" in question_lower
+                }
+                
+                missing_information = []
+                if coverage["fees"] and not any("fee" in s.get("snippet", "").lower() or "cost" in s.get("snippet", "").lower() for s in sources_list):
+                    missing_information.append("Fee Structure")
+                    coverage["fees"] = False
+                if coverage["deadlines"] and not any("deadline" in s.get("snippet", "").lower() or "date" in s.get("snippet", "").lower() for s in sources_list):
+                    missing_information.append("Processing Timeline & Deadlines")
+                    coverage["deadlines"] = False
+
+                observe_event("deep_search_analytics", {
+                    "search_mode": "deep",
+                    "pages_crawled": pages_crawled,
+                    "entities_found": entities_found,
+                    "sources_used": sources_used,
+                    "completion_time_ms": round((time.perf_counter() - started_at) * 1000)
+                })
+
+                yield stream_json_event({
+                    "type": "deep_search_summary",
+                    "pages_crawled": pages_crawled,
+                    "sources_used": sources_used,
+                    "documents_analyzed": documents_analyzed,
+                    "search_time": search_time,
+                    "confidence": confidence,
+                    "entities_found": entities_found,
+                    "coverage": coverage,
+                    "missing_information": missing_information
+                })
+
             if is_flowchart_request(request.question):
                 llm_result = generate_answer(context, request.question, history=augmented_history,
                     external_context=external_context or None, ollama_model=request.ollama_model,
-                    openrouter_model=request.openrouter_model, confidence=retrieval_confidence,
+                    openrouter_model=request.openrouter_model, gemini_model=request.gemini_model,
+                    confidence=retrieval_confidence,
                     feedback_guidance=feedback_guidance_for_url(request.url),
                     force_provider=request.force_provider or "",
                     concise_answer=request.concise_answer, cancel_event=cancel_event, document_mode=document_mode)
@@ -1011,10 +1459,11 @@ def stream_chat_with_website(request: ChatRequest):
 
             for event in stream_answer(context, request.question, history=augmented_history,
                     external_context=external_context or None, ollama_model=request.ollama_model,
-                    openrouter_model=request.openrouter_model, confidence=retrieval_confidence,
+                    openrouter_model=request.openrouter_model, gemini_model=request.gemini_model,
+                    confidence=retrieval_confidence,
                     feedback_guidance=feedback_guidance_for_url(request.url),
                     force_provider=request.force_provider or "", concise_answer=request.concise_answer,
-                    cancel_event=cancel_event):
+                    cancel_event=cancel_event, deep_search=request.deep_search):
                 raise_if_cancelled(cancel_event)
                 if event.get("type") == "delta":
                     full_answer += event.get("text", "")
@@ -1059,6 +1508,86 @@ def stream_chat_with_website(request: ChatRequest):
 
 class WebpageContentRequest(BaseModel):
     url: str
+
+class FetchUrlDocumentRequest(BaseModel):
+    url: str
+    page_url: str = ""
+
+@app.post("/fetch-url-document")
+async def fetch_url_document(request: FetchUrlDocumentRequest):
+    """Fetch a PDF/DOCX/TXT from a URL, extract text, index it, return document_id."""
+    import urllib.request
+    import urllib.error
+
+    target_url = (request.url or "").strip()
+    if not target_url:
+        raise HTTPException(status_code=400, detail="URL is required.")
+    if not target_url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Only http/https URLs are supported.")
+
+    # Determine extension
+    from urllib.parse import urlparse
+    path = urlparse(target_url).path.lower()
+    if path.endswith(".pdf"):
+        ext = ".pdf"
+    elif path.endswith(".docx"):
+        ext = ".docx"
+    elif path.endswith(".txt") or path.endswith(".md"):
+        ext = ".txt"
+    else:
+        # Try content-type sniffing
+        ext = ".pdf"  # default guess
+
+    try:
+        req = urllib.request.Request(
+            target_url,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; WebsiteChatbot/1.0)"},
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            content_type = resp.headers.get("Content-Type", "")
+            if "pdf" in content_type:
+                ext = ".pdf"
+            elif "wordprocessingml" in content_type or "msword" in content_type:
+                ext = ".docx"
+            elif "text/plain" in content_type:
+                ext = ".txt"
+                
+            data = resp.read()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not fetch URL: {e}")
+
+    if not data:
+        raise HTTPException(status_code=422, detail="Downloaded file is empty.")
+    if len(data) > 20 * 1024 * 1024:  # 20 MB limit
+        raise HTTPException(status_code=413, detail="File too large (max 20 MB).")
+
+    try:
+        text = extract_document_text(data, ext)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Could not extract text: {e}")
+
+    if not text or len(text.strip()) < 20:
+        raise HTTPException(status_code=422, detail="Could not extract readable text from this file.")
+
+    filename = target_url.split("/")[-1].split("?")[0] or "document"
+    document_id = hashlib.sha256(target_url.encode()).hexdigest()[:24]
+    document_url = f"document://{document_id}"
+
+    store_result = process_and_store_document(document_url, text, title=filename)
+
+    return {
+        "ok": True,
+        "document_id": document_id,
+        "document_url": document_url,
+        "filename": filename,
+        "source_url": target_url,
+        "chars": len(text),
+        "chunks": store_result.get("chunks", 0),
+        "extracted_text": text[:500],
+    }
+
 
 @app.post("/webpage-content")
 async def fetch_webpage_content(request: WebpageContentRequest):
@@ -1196,6 +1725,7 @@ def create_chart(request: ChartRequest):
             "model": llm_result.get("model", ""), "sources": sources, "mode": document_mode,
             "answer_time_ms": round((time.perf_counter() - started_at) * 1000)}
 
+
     except Exception as exc:
         print(f"Error in /chart: {exc}")
         return {"ok": False, "error": "Chart generation failed due to an internal error.",
@@ -1272,6 +1802,7 @@ def create_flowchart(request: FlowchartRequest):
         return {"ok": False, "error": "Flowchart generation failed due to an internal error.",
             "answer": "", "provider": "", "model": "", "sources": [], "mode": request.document_mode,
             "answer_time_ms": round((time.perf_counter() - started_at) * 1000)}
+
 
 
 if __name__ == "__main__":

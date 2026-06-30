@@ -7,5 +7,7 @@ openai
 requests
 python-dotenv
 pydantic
+tavily-python>=0.3.0
 duckduckgo-search
 pypdf
+unidecode
